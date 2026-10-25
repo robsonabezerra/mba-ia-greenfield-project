@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 7/16 completed
+**SIs:** 8/16 completed
 
 ### SI-03.1 — Infra: dependências, configuração e serviços de storage e fila no Compose
 - **Status:** completed
@@ -62,9 +62,11 @@
   - Corrida entre duas conclusões simultâneas: a transição guardada garante um único vencedor; o perdedor relê o vídeo e devolve o estado atual (202) ou 409.
 
 ### SI-03.8 — Cancelamento do upload (DELETE /videos/:slug/upload)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** video-drafts.service.integration-spec: 3, videos.service.spec: +3, videos.e2e-spec: +4 — passing (src/videos 42/42, videos.e2e 25/25)
+- **Observations:** 
+  - `VideoDraftsService.discard` trata `NoSuchUpload` do abort como resultado válido (multipart já liberado ou expirado) — único erro convertido; qualquer outro propaga, conforme a rule de services.
+  - O cancelamento aceita rascunho sem `upload_id` (caso de uma conclusão que falhou no enqueue e reverteu para `draft` com o objeto já montado): o `discard` remove o objeto pelo `headObject`.
 
 ### SI-03.9 — FfmpegService (ffprobe/ffmpeg via spawn) e fixtures de vídeo
 - **Status:** pending

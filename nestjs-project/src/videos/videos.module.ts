@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ChannelsModule } from '../channels/channels.module';
 import { StorageModule } from '../storage/storage.module';
 import { Video } from './entities/video.entity';
+import { VideoDraftsService } from './video-drafts.service';
 import { VideoProcessingProducer } from './video-processing.producer';
 import { VIDEO_PROCESSING_QUEUE } from './videos.constants';
 import { VideosController } from './videos.controller';
@@ -17,7 +18,7 @@ import { VideosService } from './videos.service';
     StorageModule,
   ],
   controllers: [VideosController],
-  providers: [VideosService, VideoProcessingProducer],
+  providers: [VideosService, VideoProcessingProducer, VideoDraftsService],
   exports: [TypeOrmModule],
 })
 export class VideosModule {}

@@ -17,6 +17,7 @@ import {
 import videosConfig from '../config/videos.config';
 import { StorageService } from '../storage/storage.service';
 import { Video } from './entities/video.entity';
+import { VideoDraftsService } from './video-drafts.service';
 import { VideoProcessingProducer } from './video-processing.producer';
 import { VideoStatus } from './video-status.enum';
 import { VideosService } from './videos.service';
@@ -50,6 +51,7 @@ describe('VideosService', () => {
   let channelsService: jest.Mocked<ChannelsService>;
   let storageService: jest.Mocked<StorageService>;
   let producer: jest.Mocked<VideoProcessingProducer>;
+  let draftsService: jest.Mocked<VideoDraftsService>;
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
@@ -96,6 +98,10 @@ describe('VideosService', () => {
             enqueueProcessing: jest.fn().mockResolvedValue(undefined),
           },
         },
+        {
+          provide: VideoDraftsService,
+          useValue: { discard: jest.fn().mockResolvedValue(undefined) },
+        },
         { provide: videosConfig.KEY, useValue: config },
       ],
     }).compile();
@@ -105,6 +111,7 @@ describe('VideosService', () => {
     channelsService = module.get(ChannelsService);
     storageService = module.get(StorageService);
     producer = module.get(VideoProcessingProducer);
+    draftsService = module.get(VideoDraftsService);
   });
 
   describe('initiateUpload', () => {
@@ -399,6 +406,36 @@ describe('VideosService', () => {
       await expect(
         service.completeUpload('user-1', 'abcdefghijk'),
       ).rejects.toThrow(VideoNotUploadableException);
+    });
+  });
+
+  describe('cancelUpload', () => {
+    it("should discard the owner's draft", async () => {
+      const video = draftVideo();
+      videoRepository.findOne.mockResolvedValue(video);
+
+      await service.cancelUpload('user-1', 'abcdefghijk');
+
+      expect(draftsService.discard).toHaveBeenCalledWith(video);
+    });
+
+    it('should refuse to cancel a video that is processing', async () => {
+      videoRepository.findOne.mockResolvedValue(
+        draftVideo({ status: VideoStatus.PROCESSING }),
+      );
+
+      await expect(
+        service.cancelUpload('user-1', 'abcdefghijk'),
+      ).rejects.toThrow(VideoNotUploadableException);
+      expect(draftsService.discard).not.toHaveBeenCalled();
+    });
+
+    it("should refuse another channel's video", async () => {
+      videoRepository.findOne.mockResolvedValue(draftVideo());
+
+      await expect(
+        service.cancelUpload('user-2', 'abcdefghijk'),
+      ).rejects.toThrow(VideoNotOwnedException);
     });
   });
 });

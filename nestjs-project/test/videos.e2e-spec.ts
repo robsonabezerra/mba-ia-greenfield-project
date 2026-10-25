@@ -368,4 +368,66 @@ describe('Videos (e2e)', () => {
       expect(bodyOf<ErrorBody>(res).error).toBe('VIDEO_NOT_OWNED');
     });
   });
+
+  const cancel = (token: string, slug: string) =>
+    request(app.getHttpServer())
+      .delete(`/videos/${slug}/upload`)
+      .set('Authorization', `Bearer ${token}`);
+
+  describe('DELETE /videos/:slug/upload', () => {
+    it('returns 204, releases the multipart upload and removes the draft', async () => {
+      const draft = await createDraft();
+      await uploadParts(
+        draft.slug,
+        randomBytes(5 * 1024 * 1024),
+        draft.upload.part_size,
+        [1],
+      );
+      const video = await dataSource
+        .getRepository(Video)
+        .findOneByOrFail({ id: draft.id });
+
+      await cancel(ownerToken, draft.slug).expect(204);
+
+      const res = await uploadState(ownerToken, draft.slug).expect(404);
+      expect(bodyOf<ErrorBody>(res).error).toBe('VIDEO_NOT_FOUND');
+      await expect(
+        storage.listParts(video.storage_key, video.upload_id!),
+      ).rejects.toMatchObject({ name: 'NoSuchUpload' });
+    });
+
+    it('returns 409 VIDEO_NOT_UPLOADABLE for a video in processing and keeps it', async () => {
+      const bytes = randomBytes(1024);
+      const draft = await createDraft(bytes.length);
+      await uploadParts(draft.slug, bytes, draft.upload.part_size);
+      await complete(ownerToken, draft.slug).expect(202);
+
+      const res = await cancel(ownerToken, draft.slug).expect(409);
+
+      expect(bodyOf<ErrorBody>(res).error).toBe('VIDEO_NOT_UPLOADABLE');
+      await expect(
+        dataSource.getRepository(Video).findOneBy({ id: draft.id }),
+      ).resolves.not.toBeNull();
+    });
+
+    it('returns 403 VIDEO_NOT_OWNED for another user', async () => {
+      const draft = await createDraft();
+      const { accessToken: otherToken } = await createAuthenticatedUser(
+        app,
+        'other@example.com',
+      );
+
+      const res = await cancel(otherToken, draft.slug).expect(403);
+
+      expect(bodyOf<ErrorBody>(res).error).toBe('VIDEO_NOT_OWNED');
+    });
+
+    it('returns 401 without a token', async () => {
+      const draft = await createDraft();
+
+      await request(app.getHttpServer())
+        .delete(`/videos/${draft.slug}/upload`)
+        .expect(401);
+    });
+  });
 });

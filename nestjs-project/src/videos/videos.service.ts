@@ -29,6 +29,7 @@ import type {
 } from './dto/upload-parts-response.dto';
 import { Video } from './entities/video.entity';
 import { generateVideoSlug } from './slug.util';
+import { VideoDraftsService } from './video-drafts.service';
 import { VideoProcessingProducer } from './video-processing.producer';
 import { VideoStatus } from './video-status.enum';
 import { videoSourceKey } from './video-storage-keys';
@@ -46,6 +47,7 @@ export class VideosService {
     private readonly channelsService: ChannelsService,
     private readonly storageService: StorageService,
     private readonly processingProducer: VideoProcessingProducer,
+    private readonly draftsService: VideoDraftsService,
     @Inject(videosConfig.KEY)
     private readonly config: ConfigType<typeof videosConfig>,
   ) {}
@@ -204,6 +206,15 @@ export class VideosService {
       throw new ProcessingQueueUnavailableException();
     }
     return { id: video.id, slug: video.slug, status: VideoStatus.PROCESSING };
+  }
+
+  /** Cancels the owner's draft upload, releasing parts, bytes and the row. */
+  async cancelUpload(userId: string, slug: string): Promise<void> {
+    const video = await this.findOwnedVideo(userId, slug);
+    if (video.status !== VideoStatus.DRAFT) {
+      throw new VideoNotUploadableException(video.status);
+    }
+    await this.draftsService.discard(video);
   }
 
   private async completeMultipart(

@@ -13,6 +13,7 @@ import {
 } from '../test/videos-test-module';
 import { Video } from './entities/video.entity';
 import { VideoStatus } from './video-status.enum';
+import { VideoDraftsService } from './video-drafts.service';
 import { VideoProcessingProducer } from './video-processing.producer';
 import { VIDEO_JOBS, VIDEO_PROCESSING_QUEUE } from './videos.constants';
 import { VideosService } from './videos.service';
@@ -30,6 +31,7 @@ describe('VideosService (integration)', () => {
     module = await createVideosTestingModule([
       VideosService,
       VideoProcessingProducer,
+      VideoDraftsService,
     ]);
     queue = module.get<Queue>(getQueueToken(VIDEO_PROCESSING_QUEUE));
     dataSource = module.get(DataSource);
