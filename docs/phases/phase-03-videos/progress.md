@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 4/16 completed
+**SIs:** 5/16 completed
 
 ### SI-03.1 — Infra: dependências, configuração e serviços de storage e fila no Compose
 - **Status:** completed
@@ -39,9 +39,12 @@
   - `Queue#client` foi removido no bullmq 6; o teste de prefixo verifica `job.queueQualifiedName` em vez de chaves Redis cruas.
 
 ### SI-03.5 — Pré-cadastro do vídeo como rascunho (POST /videos)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** slug.util.spec: 2, videos.service.spec: 6, videos.service.integration-spec: 2, channels.service.integration-spec: +2 (findByUserId), videos.e2e-spec: 6 — passing; e2e completo 58/58, unit+integração completo verde
+- **Observations:** 
+  - O script `test:e2e` não tinha `--runInBand` (o CLAUDE.md do backend afirma que já estava configurado): com uma 4ª suíte e2e os arquivos passaram a rodar em paralelo no mesmo banco e o login de uma suíte quebrava com 500 enquanto a outra limpava as tabelas. Adicionado `--runInBand` ao script.
+  - Helper `isPgUniqueViolationOnColumn` criado em `src/common/database/pg-errors.ts` para o retry de slug; o `ChannelsService` mantém a cópia privada dele (refatorar fica fora do escopo).
+  - Helpers de teste novos: `src/test/videos-test-module.ts` (módulo com DB+MinIO+Redis reais e limpeza de storage), `test/helpers/create-test-app.ts` (globais do `main.ts`) e `test/helpers/auth-user.ts` (registro→confirmação→login, limpando o throttler).
 
 ### SI-03.6 — Assinatura de partes e estado do upload (retomada)
 - **Status:** pending

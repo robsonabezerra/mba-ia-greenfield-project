@@ -5,6 +5,7 @@ import { RefreshToken } from '../auth/entities/refresh-token.entity';
 import { VerificationToken } from '../auth/entities/verification-token.entity';
 import { Channel } from '../channels/entities/channel.entity';
 import queueConfig from '../config/queue.config';
+import storageConfig from '../config/storage.config';
 import videosConfig from '../config/videos.config';
 import { QueueModule } from '../queue/queue.module';
 import { createTestDataSource } from '../test/create-test-data-source';
@@ -20,7 +21,7 @@ describe('VideosModule', () => {
       imports: [
         ConfigModule.forRoot({
           isGlobal: true,
-          load: [queueConfig, videosConfig],
+          load: [queueConfig, storageConfig, videosConfig],
         }),
         QueueModule,
         TypeOrmModule.forRoot(createTestDataSource(ALL_ENTITIES).options),
