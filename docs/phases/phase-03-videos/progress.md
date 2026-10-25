@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 10/16 completed
+**SIs:** 11/16 completed
 
 ### SI-03.1 — Infra: dependências, configuração e serviços de storage e fila no Compose
 - **Status:** completed
@@ -84,9 +84,14 @@
   - O FFmpeg lê a fonte pela URL assinada do endpoint interno (`presignInternalGetObject`), sem baixar o arquivo; só o JPEG do thumbnail vai para um diretório temporário, removido em `finally`.
 
 ### SI-03.11 — Worker: entrypoint, VideoProcessor e serviço video-worker no Compose
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** video.processor.integration-spec: 2, worker.module.spec: 1 — passing; suítes completas: unit+integração 223/223, e2e 77/77
+- **Observations:** 
+  - O worker só registrava `Video` e o TypeORM não resolvia a relação `Video → Channel → User` (`autoLoadEntities` só carrega entidades de `forFeature`): o `WorkerModule` importa `ChannelsModule` e `UsersModule`, donos dessas entidades, sem nenhum módulo HTTP (verificado no teste: zero controllers).
+  - `ConfigModule` e opções do TypeORM extraídos para `src/config/config-module.options.ts` e `src/database/typeorm-options.ts`, compartilhados por `AppModule` e `WorkerModule`.
+  - A `concurrency` do worker é aplicada em `onApplicationBootstrap` (`this.worker.concurrency`), porque as opções do decorator `@Processor` são avaliadas no import, antes de o `.env` ser carregado.
+  - No Compose, `npm run start:worker` como PID 1 engolia o SIGTERM (saída 1, `npm error signal SIGTERM`); o serviço passou a rodar `node -r ts-node/register src/worker.ts` com `init: true`. Verificado: o log mostra 'SIGTERM received, closing the worker' e o container sai em menos de 1s com 143 (o Nest re-emite o sinal após fechar o worker).
+  - Verificado: `npm run build` gera `dist/worker.js` e `npm run start:worker:prod` inicia o consumidor.
 
 ### SI-03.12 — Sweeper de uploads abandonados no worker
 - **Status:** pending

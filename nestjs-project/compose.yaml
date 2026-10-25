@@ -17,6 +17,27 @@ services:
       minio-init:
         condition: service_completed_successfully
 
+  video-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    # node runs as the direct child of tini so SIGTERM reaches Nest's shutdown
+    # hooks (graceful BullMQ worker close) instead of being swallowed by npm.
+    init: true
+    command: ["node", "-r", "ts-node/register", "src/worker.ts"]
+    environment:
+      - TS_NODE_COMPILER_OPTIONS={"module":"CommonJS"}
+    volumes:
+      - .:/home/node/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   db:
     image: postgres:17
     ports:
