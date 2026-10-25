@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 1/16 completed
+**SIs:** 2/16 completed
 
 ### SI-03.1 — Infra: dependências, configuração e serviços de storage e fila no Compose
 - **Status:** completed
@@ -13,9 +13,11 @@
   - Verificado manualmente: `minio`/`redis` healthy, `minio-init` Exited (0), bucket `streamtube` privado, boot sem `S3_ACCESS_KEY_ID` falha com 'Config validation error'.
 
 ### SI-03.2 — StorageModule e StorageService (S3/MinIO)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 8/8 passing (storage.service.integration-spec.ts: 7, storage.module.spec.ts: 1)
+- **Observations:** 
+  - Nos testes o endpoint público é igual ao interno (setup-test-env), então as URLs assinadas são resolvíveis de dentro do container; a assinatura com `localhost:9000` para o navegador é exercitada só fora dos testes.
+  - `StorageService` implementa `onModuleDestroy` para destruir os dois `S3Client` (sockets keep-alive não seguram o Jest).
 
 ### SI-03.3 — Entidade Video, relação com Channel e migration CreateVideos
 - **Status:** pending
