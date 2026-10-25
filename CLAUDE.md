@@ -12,7 +12,7 @@ This is a monorepo with two main areas:
 
 - `nestjs-project/` — Backend API (NestJS 11, TypeScript, Express). Contains modules for users, channels, videos, comments, etc.
 - `docs/` — Project documentation, architecture diagrams, and planning.
-- `next-frontend/` (Next.js) — not yet initialized
+- `next-frontend/` — Frontend (Next.js) with the Phase 02 auth screens; it has its own `CLAUDE.md`. The video UI is not built yet (Phase 03 is backend-only).
 
 ## Architecture (C4 Container Diagram)
 
@@ -20,11 +20,23 @@ See `docs/diagrams/software-arch.mermaid` for the full diagram. Key containers:
 
 - **Frontend** (Next.js) → calls API via REST, streams from Object Storage
 - **API** (Nest.js) → business rules, auth, reads/writes DB, uploads to storage, publishes jobs to queue, sends emails
-- **Video Worker** (FFmpeg) → consumes jobs from queue, processes videos, updates DB and storage
+- **Video Worker** (FFmpeg) → separate process/container (`video-worker`) running the same NestJS codebase (`nestjs-project/src/worker.ts`); consumes jobs from the queue, extracts metadata/thumbnail, updates DB and storage
 - **Database** (PostgreSQL) → users, channels, videos, comments, likes
-- **Object Storage** (S3/MinIO) → video files and thumbnails
-- **Message Queue** (TBD) → video processing job queue
+- **Object Storage** (S3-compatible; MinIO locally via the `pgsty/minio` community image) → video files and thumbnails, single private bucket, accessed through presigned URLs
+- **Message Queue** (Redis + BullMQ) → `video-processing` queue (jobs `process-video` and `sweep-expired-uploads`)
 - **Email Service** (SMTP) → account confirmation and password recovery
+
+## Videos (Phase 03 — upload and processing)
+
+Decisions: `docs/decisions/technical-decisions-phase-03-videos.md` (TD-01..TD-17). Plan, contracts and progress: `docs/phases/phase-03-videos/`.
+
+- **Upload (up to 10 GiB, no bytes through the API):** S3 multipart with presigned part URLs. `POST /videos` pre-registers the video as `draft` and opens the multipart upload; the client gets part URLs from `POST /videos/:slug/upload/parts`, `PUT`s every part straight to storage, can resume via `GET /videos/:slug/upload`, then calls `POST /videos/:slug/upload/complete`. `DELETE /videos/:slug/upload` cancels a draft. Part size is fixed by the server (`UPLOAD_PART_SIZE_BYTES`, 64 MiB); size is checked at initiation (`VIDEO_MAX_SIZE_BYTES`) and again on the stored object.
+- **Status lifecycle:** `draft → processing → ready | failed` (`videos.status`). The API moves `draft → processing` with a guarded update and enqueues `process-video` with `jobId = videoId`; the worker sets `ready` (duration, metadata, thumbnail) or `failed` with `processing_error` after the last retry. `draft` here is the ingestion state — publication/visibility belong to Phase 04.
+- **Unique URL:** each video has an 11-character random base64url `slug` (unique index); every route is `/videos/:slug`.
+- **Delivery:** `GET /videos/:slug` (public when `ready`, owner-only otherwise via `@OptionalAuth()`); `GET /videos/:slug/stream`, `/download`, `/thumbnail` answer `302` to short-lived presigned storage URLs — storage serves `Range` with `206 Partial Content`.
+- **Worker:** `VideoProcessor` (`src/video-processing/`) runs ffprobe/ffmpeg (OS binaries via `spawn`) on a presigned URL of the source, uploads `videos/{id}/thumbnail.jpg`, and runs the hourly sweep that discards drafts older than `UPLOAD_EXPIRATION_HOURS`.
+
+Backend details (services, commands, tests): `nestjs-project/CLAUDE.md`.
 
 ## Docker Networking
 

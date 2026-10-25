@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
-**Status:** in_progress
-**SIs:** 15/16 completed
+**Status:** completed
+**SIs:** 16/16 completed
 
 ### SI-03.1 — Infra: dependências, configuração e serviços de storage e fila no Compose
 - **Status:** completed
@@ -123,6 +123,9 @@
   - URLs presigned são assinadas para `GET` (o SigV4 inclui o método): verificar headers com `HEAD` dá 403; o teste usa `GET` com `Range: bytes=0-0`.
 
 ### SI-03.16 — Documentação: guia de testes, CLAUDE.md, diagrama e OpenAPI
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** openapi-export.integration-spec: 12/12 passing (+3 de vídeos: 9 operações com summary, access-token só nas rotas do dono, 302 nas rotas de entrega)
+- **Observations:** 
+  - Guia de testes atualizado conforme a Revision do TD-16: `references/external-systems.md` (MinIO e BullMQ/Redis reais, prefixo de teste, worker in-process) e as duas linhas que ainda sugeriam 'local adapter' (`SKILL.md` §3 e `artifacts/services.md`).
+  - `CLAUDE.md` da raiz: a linha 'next-frontend not yet initialized' estava desatualizada desde a Fase 02 (o subprojeto existe e tem CLAUDE.md próprio) e foi corrigida junto com a seção de vídeos, para o arquivo não descrever estado inexistente.
+  - `openapi.json` regenerado com `npm run openapi:export`; `api.http` ganhou as requisições 10–18 de vídeos.
