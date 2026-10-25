@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 8/16 completed
+**SIs:** 9/16 completed
 
 ### SI-03.1 — Infra: dependências, configuração e serviços de storage e fila no Compose
 - **Status:** completed
@@ -69,9 +69,12 @@
   - O cancelamento aceita rascunho sem `upload_id` (caso de uma conclusão que falhou no enqueue e reverteu para `draft` com o objeto já montado): o `discard` remove o objeto pelo `headObject`.
 
 ### SI-03.9 — FfmpegService (ffprobe/ffmpeg via spawn) e fixtures de vídeo
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 8/8 passing (probe-parser.spec.ts: 4, ffmpeg.service.integration-spec.ts: 4)
+- **Observations:** 
+  - `parseProbeOutput` ignora streams de vídeo com `disposition.attached_pic = 1` (capa embutida em arquivos de áudio), para que um MP3 com capa não passe como vídeo.
+  - O timeout é parâmetro opcional de `probe`/`extractFrame` (default `FFMPEG_TIMEOUT_MS` = 120s); o teste usa 1ms para provar o `SIGKILL`.
+  - `generateTestVideo` aceita `videoBitrate` para gerar MP4s maiores que uma parte de 5 MiB no e2e do pipeline (SI-03.15).
 
 ### SI-03.10 — VideoProcessingService (metadados + thumbnail)
 - **Status:** pending
