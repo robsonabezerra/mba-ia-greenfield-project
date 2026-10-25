@@ -3,7 +3,7 @@ kind: phase
 name: phase-03-videos
 sources_mtime:
   docs/project-plan.md: "2026-10-25T12:18:51-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T12:47:43-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T12:54:57-03:00"
   docs/decisions/technical-decisions-openapi-docs-nestjs.md: "2026-10-25T12:22:15-03:00"
   docs/phases/phase-01-configuracao-base/context.md: "2026-10-25T12:22:15-03:00"
   docs/phases/phase-02-auth/context.md: "2026-10-25T12:22:15-03:00"
@@ -64,7 +64,8 @@ sources_mtime:
 | phase-03-videos/TD-14 | technical-decisions-phase-03-videos.md | Cross-layer | Video Status Lifecycle and Failure Handling | decided | A (draft → processing → ready/failed, retries with backoff, failed + reason) | bullmq@^6.4.2 |
 | phase-03-videos/TD-15 | technical-decisions-phase-03-videos.md | Backend | Job Publishing Consistency and Idempotency | decided | A (DB-guarded transition + deterministic jobId = video id + idempotent worker) | bullmq@^6.4.2 |
 | phase-03-videos/TD-16 | technical-decisions-phase-03-videos.md | Backend | Testing Strategy for Storage, Queue and FFmpeg | decided | A (Real MinIO + Redis + FFmpeg from Compose, generated fixtures, isolated queue prefix) | — |
-| phase-03-videos/TD-17 | technical-decisions-phase-03-videos.md | Backend | Abandoned Upload Cleanup | pending | — | — |
+| └─ Last revision: 2026-10-25 — This phase also updates `testing-guide-nestjs-project` → `references/external-systems.md` so its Object Storage strategy documents real MinIO (presigned multipart, range delivery) and its Message Queue strategy documents the decided BullMQ/Redis setup with an isolated key prefix, replacing the local-filesystem adapter suggestion | | | | | | |
+| phase-03-videos/TD-17 | technical-decisions-phase-03-videos.md | Backend | Abandoned Upload Cleanup | decided | B (Explicit cancellation + scheduled sweeper of expired drafts in the worker) | bullmq@^6.4.2 |
 
 _Source files:_
 
@@ -185,6 +186,15 @@ _Source files:_
 **Recommendation:** real MinIO + Redis + FFmpeg, generated fixtures, isolated queue prefix — The risky contracts of this phase only exist against a real S3 API and real media; this deliberately replaces the guide's filesystem-adapter suggestion for storage, which cannot express presigned multipart or range delivery. Unit tests (mocked collaborators) remain for branching logic.
 
 **Libraries:** —
+
+**Revisions:**
+- 2026-10-25 — This phase also updates `testing-guide-nestjs-project` → `references/external-systems.md` so its Object Storage strategy documents real MinIO (presigned multipart, range delivery) and its Message Queue strategy documents the decided BullMQ/Redis setup with an isolated key prefix, replacing the local-filesystem adapter suggestion. Rationale: resolves phase-03-videos validation IC-1 — the guide loaded by `/implement` contradicted this TD.
+
+### phase-03-videos/TD-17
+
+**Recommendation:** cancellation endpoint + scheduled sweeper in the worker — The only option that behaves the same on MinIO and S3 and cleans both storage and database, reusing BullMQ (TD-01) and the worker (TD-06) instead of depending on lifecycle features MinIO lacks.
+
+**Libraries:** bullmq@^6.4.2
 
 ## Inherited Decisions Detail
 
@@ -315,6 +325,8 @@ _Source files:_
 
 **Recommendation:** `@nestjs/swagger` — é a única opção que preserva as decisões anteriores (`class-validator` em TD-06 de phase-02-auth) sem re-platform; o CLI plugin com `classValidatorShim: true` aproveita os decoradores `class-validator` existentes para inferir schemas, mantendo o boilerplate baixo. Nestia tem mérito técnico real mas o custo de migração do stack de validação inviabiliza-a sem uma decisão upstream de supersede de TD-06. Manual authoring é descartado.
 **Libraries:** @nestjs/swagger
+**Revisions:**
+- 2026-05-12 — Esclarece que o CLI plugin (`classValidatorShim: true`) cobre apenas inferência de schemas de DTOs a partir de `class-validator`; documentação de operações, respostas tipadas por status code, contratos de erro (alinhados ao envelope de phase-02-auth/TD-07) e exemplos exigem decoradores explícitos (`@ApiOperation`, `@ApiResponse`, `@ApiBody`, `@ApiParam`, `@ApiQuery`, `@ApiExtraModels`). _Rationale:_ openapi.json gerado pelo bootstrap atual está genérico — sem detalhes de parâmetros, schemas de retorno por status, nem contratos de erro — porque a base instalada se apoiou só na introspecção automática. Esta revisão fixa que enriquecimento via decoradores explícitos faz parte da Option A escolhida, não é trabalho fora do escopo do TD.
 
 ### openapi-docs-nestjs/TD-02
 

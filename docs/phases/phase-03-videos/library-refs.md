@@ -17,7 +17,7 @@ libs:
     context7_id: "/aws/aws-sdk-js-v3"
     fetched_at: "2026-10-25T12:45:38-03:00"
 sources_mtime:
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T12:43:53-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T12:54:57-03:00"
 ---
 
 # phase-03-videos — Library References
@@ -80,7 +80,7 @@ export class VideoProcessor extends WorkerHost {
 
 ## bullmq
 
-**Source:** `/taskforcesh/bullmq` (Context7, trust 9.2; version `v6.3.11` indexed, npm latest `6.4.2`). Maps to `phase-03-videos/TD-01`, `phase-03-videos/TD-14`, `phase-03-videos/TD-15`.
+**Source:** `/taskforcesh/bullmq` (Context7, trust 9.2; version `v6.3.11` indexed, npm latest `6.4.2`). Maps to `phase-03-videos/TD-01`, `phase-03-videos/TD-14`, `phase-03-videos/TD-15`, `phase-03-videos/TD-17`.
 
 ### Retries with exponential backoff (TD-14)
 
@@ -109,6 +109,20 @@ throw new UnrecoverableError('Source is not a valid video');
 ```
 
 In a `failed` listener, `job.attemptsMade` vs `job.opts.attempts` tells whether the failure is final.
+
+### Job Schedulers — recurring jobs (TD-17)
+
+`queue.upsertJobScheduler(schedulerId, repeatOpts, template)` creates (or updates, idempotently by id) a scheduler that produces jobs on a cron `pattern` or fixed `every` (ms) interval; produced jobs inherit the template's `name`, `data` and `opts`.
+
+```ts
+await queue.upsertJobScheduler(
+  'expired-uploads-sweeper',
+  { every: 60 * 60 * 1000 },                  // or { pattern: '0 0 * * * *' }
+  { name: 'sweep-expired-uploads', data: {}, opts: { removeOnComplete: true, removeOnFail: 100 } },
+);
+```
+
+The same worker processes scheduler-produced jobs; dispatch on `job.name` inside `process()` when a queue carries more than one job type.
 
 ### Worker defaults relevant to long jobs
 

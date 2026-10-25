@@ -1,22 +1,24 @@
 ---
 kind: phase
 name: phase-03-videos
-status: dirty
-issue_count: 2
+status: clean
+issue_count: 0
 sources_mtime:
-  docs/phases/phase-03-videos/context.md: "2026-10-25T12:47:56-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T12:47:43-03:00"
+  docs/phases/phase-03-videos/context.md: "2026-10-25T12:55:30-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T12:54:57-03:00"
 issues:
   - id: IC-1
-    status: open
+    status: resolved
     summary: "TD-16 (MinIO real em testes) contradiz o guia de testes (adapter de filesystem)"
+    resolved_by: phase-03-videos/TD-16
   - id: MD-1
     status: resolved
     summary: "Sem TD para limpeza de uploads multipart abandonados (partes órfãs)"
     resolved_by: phase-03-videos/TD-17
   - id: OQ-17
-    status: open
+    status: resolved
     summary: "TD-17 pending — Abandoned Upload Cleanup"
+    resolved_by: phase-03-videos/TD-17
   - id: AMB-1
     status: resolved
     summary: "'rascunho' (Fase 03) vs fluxo rascunho → publicação (Fase 04): fronteira ambígua"
@@ -98,7 +100,7 @@ advisories: []
 
 ### Inconsistencies
 
-- **IC-1** — `## Decisions Detail → phase-03-videos/TD-16` decides "Real MinIO + Redis + FFmpeg from Compose" for storage tests, while `## Testing Requirements` (from `testing-guide-nestjs-project` → `references/external-systems.md`) states "Object Storage via a local-filesystem adapter in tests". The implementer loads that guide at every SI (`/implement` Step 2), so the two sources will give contradictory instructions for every storage test. Explicit choice: (a) keep TD-16 and update the testing guide's Object Storage (and Message Queue — technology now decided) strategy to match the decided infrastructure as part of this phase; (b) keep the guide and supersede TD-16 with a filesystem adapter.
+_None._
 
 ### Ambiguities
 
@@ -118,7 +120,7 @@ _None._
 
 ### Unresolved Open Questions
 
-- **OQ-17** — TD-17 pending — Abandoned Upload Cleanup. Resolution: fill the **Decision:** field of TD-17 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
+_None._
 
 ### UI Coverage Gaps
 
@@ -145,3 +147,5 @@ _None._
 - **OQ-15** _(resolved_by phase-03-videos/TD-15)_ — TD-15 pending — Job Publishing Consistency and Idempotency.
 - **OQ-16** _(resolved_by phase-03-videos/TD-16)_ — TD-16 pending — Testing Strategy for Storage, Queue and FFmpeg.
 - **MD-1** _(resolved_by phase-03-videos/TD-17)_ — Sem TD para limpeza de uploads multipart abandonados (partes órfãs). Added by a complementary `/research` round (TD-17 appended to the phase decisions doc); its pending decision is tracked as OQ-17.
+- **IC-1** _(resolved_by phase-03-videos/TD-16)_ — TD-16 (MinIO real em testes) contradiz o guia de testes (adapter de filesystem). Kept TD-16 (Option A); appended a `**Revisions:**` entry requiring this phase to update `testing-guide-nestjs-project` → `references/external-systems.md` (storage + queue strategies).
+- **OQ-17** _(resolved_by phase-03-videos/TD-17)_ — TD-17 pending — Abandoned Upload Cleanup.

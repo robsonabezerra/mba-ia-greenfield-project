@@ -1,7 +1,7 @@
 ---
 scope_type: phase
 related_phases: [3]
-status: pending
+status: decided
 date: 2026-10-25
 scope_description: "Backend foundation for video ingestion: object storage usage, background job queue, direct-to-storage resumable upload of files up to 10GB, draft pre-registration, FFmpeg worker (metadata + thumbnail), unique video URLs, streaming and download delivery, and the video status lifecycle."
 ---
@@ -505,6 +505,9 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 **Decision:** A (Real MinIO + Redis + FFmpeg from Compose, generated fixtures, isolated queue prefix)
 **Libraries:** —
 
+**Revisions:**
+- 2026-10-25 — This phase also updates `testing-guide-nestjs-project` → `references/external-systems.md` so its Object Storage strategy documents real MinIO (presigned multipart, range delivery) and its Message Queue strategy documents the decided BullMQ/Redis setup with an isolated key prefix, replacing the local-filesystem adapter suggestion. Rationale: resolves phase-03-videos validation IC-1 — the guide loaded by `/implement` contradicted this TD.
+
 ---
 
 ## TD-17: Abandoned Upload Cleanup
@@ -534,7 +537,8 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 **Recommendation:** **Option B (cancellation endpoint + scheduled sweeper in the worker)** — The only option that behaves the same on MinIO and S3 and cleans both storage and database, reusing BullMQ (TD-01) and the worker (TD-06) instead of depending on lifecycle features MinIO lacks.
 
-**Decision:** _[pending]_
+**Decision:** B (Explicit cancellation + scheduled sweeper of expired drafts in the worker)
+**Libraries:** bullmq@^6.4.2
 
 ---
 
@@ -558,4 +562,4 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 | TD-14 | Cross-layer | Video Status Lifecycle and Failure Handling | `draft → processing → ready \| failed` + retries | A (draft → processing → ready/failed, retries with backoff, failed + reason) |
 | TD-15 | Backend | Job Publishing Consistency and Idempotency | Guarded transition + `jobId` = video id + idempotent worker | A (DB-guarded transition + deterministic jobId = video id + idempotent worker) |
 | TD-16 | Backend | Testing Strategy for Storage, Queue and FFmpeg | Real MinIO + Redis + FFmpeg, generated fixtures | A (Real MinIO + Redis + FFmpeg from Compose, generated fixtures, isolated queue prefix) |
-| TD-17 | Backend | Abandoned Upload Cleanup | Cancellation endpoint + scheduled sweeper in the worker | _[pending]_ |
+| TD-17 | Backend | Abandoned Upload Cleanup | Cancellation endpoint + scheduled sweeper in the worker | B (Explicit cancellation + scheduled sweeper of expired drafts in the worker) |
