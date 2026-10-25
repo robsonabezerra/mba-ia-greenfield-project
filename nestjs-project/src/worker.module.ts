@@ -9,6 +9,7 @@ import { buildTypeOrmOptions } from './database/typeorm-options';
 import { QueueModule } from './queue/queue.module';
 import { UsersModule } from './users/users.module';
 import { VideoProcessingModule } from './video-processing/video-processing.module';
+import { ExpiredUploadsSchedulerService } from './video-processing/expired-uploads-scheduler.service';
 import { VideoProcessor } from './video-processing/video.processor';
 import { VIDEO_PROCESSING_QUEUE } from './videos/videos.constants';
 
@@ -29,6 +30,6 @@ import { VIDEO_PROCESSING_QUEUE } from './videos/videos.constants';
     ChannelsModule,
     UsersModule,
   ],
-  providers: [VideoProcessor],
+  providers: [VideoProcessor, ExpiredUploadsSchedulerService],
 })
 export class WorkerModule {}

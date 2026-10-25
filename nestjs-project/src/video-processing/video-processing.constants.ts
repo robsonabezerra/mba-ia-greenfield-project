@@ -12,3 +12,6 @@ export const THUMBNAIL_CONTENT_TYPE = 'image/jpeg';
 export const SOURCE_URL_EXPIRES_IN_SECONDS = 3600;
 
 export const PROCESSING_ERROR_MAX_LENGTH = 500;
+
+/** Id of the BullMQ job scheduler that triggers the abandoned-upload sweep. */
+export const EXPIRED_UPLOADS_SCHEDULER_ID = 'expired-uploads-sweeper';

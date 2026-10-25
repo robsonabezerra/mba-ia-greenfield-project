@@ -117,4 +117,23 @@ describe('VideoProcessor (integration, worker in-process)', () => {
     expect(await job!.getState()).toBe('failed');
     expect(job!.attemptsMade).toBe(1);
   }, 40000);
+
+  it('should run the abandoned-upload sweep for a sweep-expired-uploads job', async () => {
+    const expired = await videoRepository.save(buildVideo(channel.id));
+    await videoRepository.update(
+      { id: expired.id },
+      { created_at: new Date(Date.now() - 25 * 60 * 60 * 1000) },
+    );
+
+    const job = await queue.add(VIDEO_JOBS.SWEEP_EXPIRED_UPLOADS, {});
+
+    const deadline = Date.now() + 20000;
+    while ((await job.getState()) !== 'completed' && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    expect(await job.getState()).toBe('completed');
+    await expect(
+      videoRepository.findOneBy({ id: expired.id }),
+    ).resolves.toBeNull();
+  }, 30000);
 });

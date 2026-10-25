@@ -5,6 +5,7 @@ import { Job, UnrecoverableError } from 'bullmq';
 import videosConfig from '../config/videos.config';
 import type { ProcessVideoJobData } from '../videos/video-jobs.types';
 import { VIDEO_JOBS, VIDEO_PROCESSING_QUEUE } from '../videos/videos.constants';
+import { ExpiredUploadsSweeperService } from './expired-uploads-sweeper.service';
 import { VideoProcessingService } from './video-processing.service';
 
 @Processor(VIDEO_PROCESSING_QUEUE)
@@ -16,6 +17,7 @@ export class VideoProcessor
 
   constructor(
     private readonly processingService: VideoProcessingService,
+    private readonly sweeperService: ExpiredUploadsSweeperService,
     @Inject(videosConfig.KEY)
     private readonly config: ConfigType<typeof videosConfig>,
   ) {
@@ -33,6 +35,9 @@ export class VideoProcessor
         await this.processingService.process(
           (job.data as ProcessVideoJobData).videoId,
         );
+        return;
+      case VIDEO_JOBS.SWEEP_EXPIRED_UPLOADS:
+        await this.sweeperService.sweep();
         return;
       default:
         throw new UnrecoverableError(`Unknown job name: ${job.name}`);

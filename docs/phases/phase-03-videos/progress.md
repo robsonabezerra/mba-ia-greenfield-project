@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 11/16 completed
+**SIs:** 12/16 completed
 
 ### SI-03.1 — Infra: dependências, configuração e serviços de storage e fila no Compose
 - **Status:** completed
@@ -94,9 +94,11 @@
   - Verificado: `npm run build` gera `dist/worker.js` e `npm run start:worker:prod` inicia o consumidor.
 
 ### SI-03.12 — Sweeper de uploads abandonados no worker
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** expired-uploads-sweeper.service.integration-spec: 2, expired-uploads-scheduler.service.integration-spec: 1, video.processor.integration-spec: +1 (job de sweep pelo worker real) — passing (src/video-processing + worker 27/27)
+- **Observations:** 
+  - `VideoDraftsService` (domínio de vídeos) é provido também no `VideoProcessingModule`, que já tem o repositório `Video` e o `StorageModule` — o worker reaproveita a mesma limpeza do cancelamento sem importar o `VideosModule` (que traz controller HTTP).
+  - O sweeper faz catch-and-log por rascunho (contexto de background permitido pela rule de services): um rascunho com erro não interrompe a varredura e volta a ser tentado na próxima execução.
 
 ### SI-03.13 — Detalhes do vídeo pela URL única com autenticação opcional (GET /videos/:slug)
 - **Status:** pending
