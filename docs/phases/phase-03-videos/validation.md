@@ -4,15 +4,19 @@ name: phase-03-videos
 status: dirty
 issue_count: 2
 sources_mtime:
-  docs/phases/phase-03-videos/context.md: "2026-10-25T12:44:12-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T12:43:53-03:00"
+  docs/phases/phase-03-videos/context.md: "2026-10-25T12:47:56-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T12:47:43-03:00"
 issues:
   - id: IC-1
     status: open
     summary: "TD-16 (MinIO real em testes) contradiz o guia de testes (adapter de filesystem)"
   - id: MD-1
-    status: open
+    status: resolved
     summary: "Sem TD para limpeza de uploads multipart abandonados (partes órfãs)"
+    resolved_by: phase-03-videos/TD-17
+  - id: OQ-17
+    status: open
+    summary: "TD-17 pending — Abandoned Upload Cleanup"
   - id: AMB-1
     status: resolved
     summary: "'rascunho' (Fase 03) vs fluxo rascunho → publicação (Fase 04): fronteira ambígua"
@@ -102,7 +106,7 @@ _None._
 
 ### Missing Decisions
 
-- **MD-1** — Capability "Upload de vídeos com suporte a arquivos de até 10GB sem impacto na performance" is covered by `phase-03-videos/TD-04`, whose decided option accepts as a con that "Abandoned uploads leave orphan parts until aborted (needs an abort endpoint and/or storage cleanup)" — but no TD decides how abandoned multipart uploads (and their `draft` videos) are cleaned up. Up to 10GB of orphan parts per abandoned upload directly affects storage cost. Explicit choice: run /research with related_phases=[3] to add a TD covering abandoned-upload cleanup (client abort endpoint, storage-side expiry of incomplete multipart uploads, and/or a scheduled sweeper).
+_None._
 
 ### Dependency Gaps
 
@@ -114,7 +118,7 @@ _None._
 
 ### Unresolved Open Questions
 
-_None._
+- **OQ-17** — TD-17 pending — Abandoned Upload Cleanup. Resolution: fill the **Decision:** field of TD-17 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
 
 ### UI Coverage Gaps
 
@@ -140,3 +144,4 @@ _None._
 - **OQ-14** _(resolved_by phase-03-videos/TD-14)_ — TD-14 pending — Video Status Lifecycle and Failure Handling.
 - **OQ-15** _(resolved_by phase-03-videos/TD-15)_ — TD-15 pending — Job Publishing Consistency and Idempotency.
 - **OQ-16** _(resolved_by phase-03-videos/TD-16)_ — TD-16 pending — Testing Strategy for Storage, Queue and FFmpeg.
+- **MD-1** _(resolved_by phase-03-videos/TD-17)_ — Sem TD para limpeza de uploads multipart abandonados (partes órfãs). Added by a complementary `/research` round (TD-17 appended to the phase decisions doc); its pending decision is tracked as OQ-17.

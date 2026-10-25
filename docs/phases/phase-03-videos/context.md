@@ -3,7 +3,7 @@ kind: phase
 name: phase-03-videos
 sources_mtime:
   docs/project-plan.md: "2026-10-25T12:18:51-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T12:43:53-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T12:47:43-03:00"
   docs/decisions/technical-decisions-openapi-docs-nestjs.md: "2026-10-25T12:22:15-03:00"
   docs/phases/phase-01-configuracao-base/context.md: "2026-10-25T12:22:15-03:00"
   docs/phases/phase-02-auth/context.md: "2026-10-25T12:22:15-03:00"
@@ -64,6 +64,7 @@ sources_mtime:
 | phase-03-videos/TD-14 | technical-decisions-phase-03-videos.md | Cross-layer | Video Status Lifecycle and Failure Handling | decided | A (draft → processing → ready/failed, retries with backoff, failed + reason) | bullmq@^6.4.2 |
 | phase-03-videos/TD-15 | technical-decisions-phase-03-videos.md | Backend | Job Publishing Consistency and Idempotency | decided | A (DB-guarded transition + deterministic jobId = video id + idempotent worker) | bullmq@^6.4.2 |
 | phase-03-videos/TD-16 | technical-decisions-phase-03-videos.md | Backend | Testing Strategy for Storage, Queue and FFmpeg | decided | A (Real MinIO + Redis + FFmpeg from Compose, generated fixtures, isolated queue prefix) | — |
+| phase-03-videos/TD-17 | technical-decisions-phase-03-videos.md | Backend | Abandoned Upload Cleanup | pending | — | — |
 
 _Source files:_
 
@@ -75,7 +76,7 @@ _Source files:_
 |------------|------------|
 | Serviço de armazenamento de arquivos (vídeos e thumbnails) | phase-03-videos/TD-02, phase-03-videos/TD-03, phase-03-videos/TD-16 |
 | Serviço de processamento em segundo plano (filas) | phase-03-videos/TD-01, phase-03-videos/TD-06, phase-03-videos/TD-15, phase-03-videos/TD-16 |
-| Upload de vídeos com suporte a arquivos de até 10GB sem impacto na performance | phase-03-videos/TD-04, phase-03-videos/TD-05 |
+| Upload de vídeos com suporte a arquivos de até 10GB sem impacto na performance | phase-03-videos/TD-04, phase-03-videos/TD-05, phase-03-videos/TD-17 |
 | Pré-cadastro automático do vídeo como rascunho ao iniciar o upload | phase-03-videos/TD-04, phase-03-videos/TD-14 |
 | Processamento automático do vídeo após upload (extração de duração e metadados) | phase-03-videos/TD-06, phase-03-videos/TD-07, phase-03-videos/TD-08, phase-03-videos/TD-10, phase-03-videos/TD-14, phase-03-videos/TD-15, phase-03-videos/TD-16 |
 | Geração automática de thumbnail a partir de um frame do vídeo | phase-03-videos/TD-06, phase-03-videos/TD-07, phase-03-videos/TD-08, phase-03-videos/TD-09, phase-03-videos/TD-14, phase-03-videos/TD-16 |

@@ -1,7 +1,7 @@
 ---
 scope_type: phase
 related_phases: [3]
-status: decided
+status: pending
 date: 2026-10-25
 scope_description: "Backend foundation for video ingestion: object storage usage, background job queue, direct-to-storage resumable upload of files up to 10GB, draft pre-registration, FFmpeg worker (metadata + thumbnail), unique video URLs, streaming and download delivery, and the video status lifecycle."
 ---
@@ -507,6 +507,37 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 ---
 
+## TD-17: Abandoned Upload Cleanup
+
+**Scope:** Backend
+
+**Capability:** Upload de vídeos com suporte a arquivos de até 10GB sem impacto na performance
+
+**Context:** With TD-04 every upload opens an S3 multipart upload and a `draft` video row at initiation. If the client never completes (closed tab, lost connection, gave up), the already-uploaded parts — up to 10GB — stay in storage, invisible but billed, and the draft row lingers. `docs/project-plan.md` § Pontos de Atenção calls out storage growth and cost. Research finding (Context7 `/minio/docs`, S3 API compatibility page): MinIO does **not** support the `AbortIncompleteMultipartUpload` lifecycle action, so the S3-native cleanup rule is not available in the local stack. Depends on TD-01, TD-04 and TD-14.
+
+**Options:**
+
+### Option A: Explicit client cancellation only
+- An owner-only endpoint cancels an upload: aborts the multipart upload (`AbortMultipartUpload`) and deletes the `draft` row.
+- **Pros:** Smallest surface; immediate cleanup when the client cooperates.
+- **Cons:** Does nothing for silent abandonment (the common case: crash, closed browser) — orphan parts accumulate indefinitely.
+
+### Option B: Explicit cancellation + scheduled sweeper of expired drafts in the worker
+- Same cancellation endpoint as A, plus a BullMQ job scheduler (`queue.upsertJobScheduler`, e.g., hourly) consumed by the worker that finds `draft` videos older than `UPLOAD_EXPIRATION_HOURS` (e.g., 24h), aborts their multipart uploads and deletes the rows. Presigned part URLs never outlive the upload expiration.
+- **Pros:** Covers silent abandonment; identical behavior on MinIO and S3 (no dependency on storage lifecycle support); reuses the queue/worker already introduced; deterministic and testable (the sweep is a plain service method).
+- **Cons:** One more scheduled job and a time-based policy to configure; a user resuming after the expiration finds the upload gone (must start over).
+
+### Option C: Storage lifecycle rule only (`AbortIncompleteMultipartUpload` after N days)
+- Configure the bucket lifecycle to abort incomplete multipart uploads automatically.
+- **Pros:** Zero application code; storage-native on AWS S3.
+- **Cons:** Not supported by MinIO (local stack and tests would behave differently from production); leaves `draft` rows orphaned in the database; no explicit cancellation for clients.
+
+**Recommendation:** **Option B (cancellation endpoint + scheduled sweeper in the worker)** — The only option that behaves the same on MinIO and S3 and cleans both storage and database, reusing BullMQ (TD-01) and the worker (TD-06) instead of depending on lifecycle features MinIO lacks.
+
+**Decision:** _[pending]_
+
+---
+
 ## Decisions Summary
 
 | ID | Scope | Decision | Recommendation | Choice |
@@ -527,3 +558,4 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 | TD-14 | Cross-layer | Video Status Lifecycle and Failure Handling | `draft → processing → ready \| failed` + retries | A (draft → processing → ready/failed, retries with backoff, failed + reason) |
 | TD-15 | Backend | Job Publishing Consistency and Idempotency | Guarded transition + `jobId` = video id + idempotent worker | A (DB-guarded transition + deterministic jobId = video id + idempotent worker) |
 | TD-16 | Backend | Testing Strategy for Storage, Queue and FFmpeg | Real MinIO + Redis + FFmpeg, generated fixtures | A (Real MinIO + Redis + FFmpeg from Compose, generated fixtures, isolated queue prefix) |
+| TD-17 | Backend | Abandoned Upload Cleanup | Cancellation endpoint + scheduled sweeper in the worker | _[pending]_ |
