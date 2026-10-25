@@ -14,6 +14,10 @@ const MANAGED_TABLES = [
   'verification_tokens',
 ];
 
+// Enum types survive DROP TABLE ... CASCADE; leaving them behind makes the
+// CREATE TYPE in the migrations fail on a previously migrated database.
+const MANAGED_ENUM_TYPES = ['verification_tokens_type_enum'];
+
 describe('Database migrations (integration)', () => {
   let dataSource: DataSource;
 
@@ -37,13 +41,21 @@ describe('Database migrations (integration)', () => {
       ),
       dataSource.query(`DROP TABLE IF EXISTS "migrations" CASCADE`),
     ]);
+    for (const enumType of MANAGED_ENUM_TYPES) {
+      await dataSource.query(`DROP TYPE IF EXISTS "${enumType}" CASCADE`);
+    }
   });
 
   afterAll(async () => {
     // The second test undoes the last migration, leaving token tables missing.
     // Re-apply so the shared DB is fully migrated when subsequent suites run.
-    await dataSource.runMigrations();
-    await dataSource.destroy();
+    // destroy() runs even if re-applying fails, so an open connection never
+    // keeps Jest from exiting.
+    try {
+      await dataSource.runMigrations();
+    } finally {
+      await dataSource.destroy();
+    }
   });
 
   it('should apply all migrations and create all four tables', async () => {
