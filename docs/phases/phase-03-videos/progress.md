@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 14/16 completed
+**SIs:** 15/16 completed
 
 ### SI-03.1 — Infra: dependências, configuração e serviços de storage e fila no Compose
 - **Status:** completed
@@ -115,9 +115,12 @@
   - O e2e segue o `Location` com `fetch` de dentro do container (o endpoint público é igual ao interno nos testes) e valida o 206 + `Content-Range` servido pelo próprio MinIO: nenhum byte de vídeo passa pela API.
 
 ### SI-03.15 — Pipeline completo de ingestão (E2E com worker real)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 2/2 passing (video-pipeline.e2e-spec.ts: caminho feliz multipart → ready → stream 206/download/thumbnail; caminho de falha → failed)
+- **Observations:** 
+  - A API (`createTestApp`) e o `WorkerModule` sobem no mesmo processo de teste com o prefixo de fila de teste; o `video-worker` de dev (prefixo `streamtube`) não consome esses jobs.
+  - O MP4 é gerado em 1280x720 a 12 Mbit/s para ultrapassar uma parte de 5 MiB; o teste afirma `part_count ≥ 2`.
+  - URLs presigned são assinadas para `GET` (o SigV4 inclui o método): verificar headers com `HEAD` dá 403; o teste usa `GET` com `Range: bytes=0-0`.
 
 ### SI-03.16 — Documentação: guia de testes, CLAUDE.md, diagrama e OpenAPI
 - **Status:** pending
