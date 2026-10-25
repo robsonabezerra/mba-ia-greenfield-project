@@ -9,6 +9,7 @@ import { StorageService } from '../src/storage/storage.service';
 import { cleanAllTables } from '../src/test/create-test-data-source';
 import { cleanVideoStorage } from '../src/test/videos-test-module';
 import { Video } from '../src/videos/entities/video.entity';
+import { VideoStatus } from '../src/videos/video-status.enum';
 import { VIDEO_PROCESSING_QUEUE } from '../src/videos/videos.constants';
 import { createAuthenticatedUser } from './helpers/auth-user';
 import { createTestApp } from './helpers/create-test-app';
@@ -25,6 +26,16 @@ interface CreatedVideoBody {
 interface SignedPartsBody {
   parts: { part_number: number; url: string }[];
   expires_at: string;
+}
+
+interface VideoBody {
+  id: string;
+  slug: string;
+  status: string;
+  channel: { id: string; nickname: string; name: string };
+  stream_url: string | null;
+  download_url: string | null;
+  thumbnail_url: string | null;
 }
 
 interface UploadStateBody {
@@ -428,6 +439,76 @@ describe('Videos (e2e)', () => {
       await request(app.getHttpServer())
         .delete(`/videos/${draft.slug}/upload`)
         .expect(401);
+    });
+  });
+
+  describe('GET /videos/:slug', () => {
+    const getVideo = (slug: string, token?: string) => {
+      const req = request(app.getHttpServer()).get(`/videos/${slug}`);
+      return token ? req.set('Authorization', `Bearer ${token}`) : req;
+    };
+
+    async function readyVideo(): Promise<CreatedVideoBody> {
+      const draft = await createDraft(1024);
+      await dataSource
+        .getRepository(Video)
+        .update(
+          { id: draft.id },
+          { status: VideoStatus.READY, upload_id: null },
+        );
+      return draft;
+    }
+
+    it('returns 200 to anonymous callers for a ready video, with delivery URLs', async () => {
+      const video = await readyVideo();
+
+      const res = await getVideo(video.slug).expect(200);
+
+      const body = bodyOf<VideoBody>(res);
+      expect(body).toMatchObject({
+        status: 'ready',
+        stream_url: `/videos/${video.slug}/stream`,
+        download_url: `/videos/${video.slug}/download`,
+        thumbnail_url: `/videos/${video.slug}/thumbnail`,
+      });
+      expect(body.channel.nickname).toEqual(expect.any(String));
+    });
+
+    it('treats an invalid Bearer token as anonymous', async () => {
+      const video = await readyVideo();
+
+      await getVideo(video.slug, 'not-a-valid-jwt').expect(200);
+    });
+
+    it('returns 404 VIDEO_NOT_FOUND to anonymous callers for a draft', async () => {
+      const draft = await createDraft();
+
+      const res = await getVideo(draft.slug).expect(404);
+
+      expect(bodyOf<ErrorBody>(res).error).toBe('VIDEO_NOT_FOUND');
+    });
+
+    it('returns the draft to its owner without delivery URLs', async () => {
+      const draft = await createDraft();
+
+      const res = await getVideo(draft.slug, ownerToken).expect(200);
+
+      expect(bodyOf<VideoBody>(res)).toMatchObject({
+        status: 'draft',
+        stream_url: null,
+        download_url: null,
+        thumbnail_url: null,
+      });
+    });
+
+    it('returns 404 VIDEO_NOT_FOUND for an unknown slug', async () => {
+      const res = await getVideo('AAAAAAAAAAA').expect(404);
+
+      expect(bodyOf<ErrorBody>(res).error).toBe('VIDEO_NOT_FOUND');
+    });
+
+    it('keeps protected routes protected (GET /auth/me without token is 401)', async () => {
+      await request(app.getHttpServer()).get('/auth/me').expect(401);
     });
   });
 });

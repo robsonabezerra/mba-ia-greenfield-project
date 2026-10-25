@@ -438,4 +438,61 @@ describe('VideosService', () => {
       ).rejects.toThrow(VideoNotOwnedException);
     });
   });
+
+  describe('getVideo', () => {
+    const channelOf = {
+      id: 'channel-1',
+      user_id: 'user-1',
+      nickname: 'alice',
+      name: 'alice',
+    } as Channel;
+
+    it('should expose a ready video to anonymous callers with delivery URLs', async () => {
+      videoRepository.findOne.mockResolvedValue(
+        draftVideo({
+          status: VideoStatus.READY,
+          channel: channelOf,
+          processed_at: new Date(),
+        }),
+      );
+
+      const result = await service.getVideo('abcdefghijk');
+
+      expect(result).toMatchObject({
+        status: VideoStatus.READY,
+        channel: { nickname: 'alice' },
+        stream_url: '/videos/abcdefghijk/stream',
+        download_url: '/videos/abcdefghijk/download',
+        thumbnail_url: '/videos/abcdefghijk/thumbnail',
+      });
+    });
+
+    it('should expose a draft to its owner without delivery URLs', async () => {
+      videoRepository.findOne.mockResolvedValue(
+        draftVideo({ channel: channelOf }),
+      );
+
+      const result = await service.getVideo('abcdefghijk', 'user-1');
+
+      expect(result).toMatchObject({
+        status: VideoStatus.DRAFT,
+        stream_url: null,
+        download_url: null,
+        thumbnail_url: null,
+      });
+    });
+
+    it('should hide a draft from anonymous callers and other users', async () => {
+      videoRepository.findOne.mockResolvedValue(
+        draftVideo({ channel: channelOf }),
+      );
+
+      await expect(service.getVideo('abcdefghijk')).rejects.toThrow(
+        VideoNotFoundException,
+      );
+      await expect(service.getVideo('abcdefghijk', 'user-2')).rejects.toThrow(
+        VideoNotFoundException,
+      );
+    });
+  });
 });

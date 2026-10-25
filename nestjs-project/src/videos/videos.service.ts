@@ -27,6 +27,7 @@ import type {
   SignedUploadPartsResponseDto,
   UploadStateResponseDto,
 } from './dto/upload-parts-response.dto';
+import type { VideoResponseDto } from './dto/video-response.dto';
 import { Video } from './entities/video.entity';
 import { generateVideoSlug } from './slug.util';
 import { VideoDraftsService } from './video-drafts.service';
@@ -103,6 +104,46 @@ export class VideosService {
         part_count: video.upload_part_count,
         expires_at: this.uploadExpiresAt(video).toISOString(),
       },
+    };
+  }
+
+  /**
+   * Video by its unique URL: `ready` videos are public; anything else is only
+   * visible to the owner (per TD-13).
+   */
+  async getVideo(
+    slug: string,
+    viewerUserId?: string,
+  ): Promise<VideoResponseDto> {
+    const video = await this.videoRepository.findOne({
+      where: { slug },
+      relations: ['channel'],
+    });
+    if (!video) throw new VideoNotFoundException();
+    const isReady = video.status === VideoStatus.READY;
+    if (!isReady && video.channel.user_id !== viewerUserId) {
+      throw new VideoNotFoundException();
+    }
+
+    const base = `/videos/${video.slug}`;
+    return {
+      id: video.id,
+      slug: video.slug,
+      title: video.title,
+      status: video.status,
+      duration_seconds: video.duration_seconds,
+      metadata: video.metadata,
+      processing_error: video.processing_error,
+      channel: {
+        id: video.channel.id,
+        nickname: video.channel.nickname,
+        name: video.channel.name,
+      },
+      stream_url: isReady ? `${base}/stream` : null,
+      download_url: isReady ? `${base}/download` : null,
+      thumbnail_url: isReady ? `${base}/thumbnail` : null,
+      created_at: video.created_at.toISOString(),
+      processed_at: video.processed_at?.toISOString() ?? null,
     };
   }
 

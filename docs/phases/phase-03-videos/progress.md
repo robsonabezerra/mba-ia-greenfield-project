@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 12/16 completed
+**SIs:** 13/16 completed
 
 ### SI-03.1 — Infra: dependências, configuração e serviços de storage e fila no Compose
 - **Status:** completed
@@ -101,9 +101,11 @@
   - O sweeper faz catch-and-log por rascunho (contexto de background permitido pela rule de services): um rascunho com erro não interrompe a varredura e volta a ser tentado na próxima execução.
 
 ### SI-03.13 — Detalhes do vídeo pela URL única com autenticação opcional (GET /videos/:slug)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** jwt-auth.guard.spec: +3, videos.service.spec: +3, videos.e2e-spec: +6 — passing (guard+videos 53/53, videos.e2e 31/31, auth.e2e sem regressão)
+- **Observations:** 
+  - `@OptionalAuth()` é verificado antes de `@Public()` no guard global: token válido popula `request.user`, ausente ou inválido segue anônimo; rotas protegidas continuam exigindo token (coberto em unit e e2e).
+  - Vídeo não-`ready` responde 404 também para outros usuários autenticados, não 403, para não revelar rascunhos de terceiros (Authorization Matrix).
 
 ### SI-03.14 — Streaming, download e thumbnail por redirecionamento a URLs assinadas
 - **Status:** pending

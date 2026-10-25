@@ -18,6 +18,7 @@ import {
 import { SkipThrottle } from '@nestjs/throttler';
 import type { JwtPayload } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { OptionalAuth } from '../auth/decorators/optional-auth.decorator';
 import { ApiErrorEnvelope } from '../common/openapi/api-error-envelope.dto';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { CompletedUploadResponseDto } from './dto/completed-upload-response.dto';
@@ -27,6 +28,7 @@ import {
   SignedUploadPartsResponseDto,
   UploadStateResponseDto,
 } from './dto/upload-parts-response.dto';
+import { VideoResponseDto } from './dto/video-response.dto';
 import { VideosService } from './videos.service';
 
 const errorSchema = { $ref: getSchemaPath(ApiErrorEnvelope) };
@@ -75,6 +77,31 @@ export class VideosController {
     @Body() dto: CreateVideoDto,
   ): Promise<CreatedVideoResponseDto> {
     return this.videosService.initiateUpload(user.sub, dto);
+  }
+
+  @Get(':slug')
+  @OptionalAuth()
+  @ApiOperation({
+    summary: 'Get a video by its unique URL',
+    description:
+      'Public for ready videos. Videos that are not ready yet are only visible to their owner (send the Bearer token).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Video details',
+    type: VideoResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Video not found, or not ready and the caller is not the owner',
+    schema: errorSchema,
+  })
+  async getVideo(
+    @Param('slug') slug: string,
+    @CurrentUser() user: JwtPayload | undefined,
+  ): Promise<VideoResponseDto> {
+    return this.videosService.getVideo(slug, user?.sub);
   }
 
   @Post(':slug/upload/parts')
