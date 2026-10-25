@@ -8,7 +8,7 @@ import { StorageService } from './storage.service';
 const FIVE_MIB = 5 * 1024 * 1024;
 
 async function putPart(url: string, body: Buffer): Promise<number> {
-  const res = await fetch(url, { method: 'PUT', body });
+  const res = await fetch(url, { method: 'PUT', body: new Uint8Array(body) });
   return res.status;
 }
 

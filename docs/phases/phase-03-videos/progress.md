@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 2/16 completed
+**SIs:** 3/16 completed
 
 ### SI-03.1 — Infra: dependências, configuração e serviços de storage e fila no Compose
 - **Status:** completed
@@ -20,9 +20,14 @@
   - `StorageService` implementa `onModuleDestroy` para destruir os dois `S3Client` (sockets keep-alive não seguram o Jest).
 
 ### SI-03.3 — Entidade Video, relação com Channel e migration CreateVideos
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 9/9 passing (video.entity.integration-spec.ts: 6, migrations.integration-spec.ts: 2, videos.module.spec.ts: 1); suíte unit+integração completa 162/162
+- **Observations:** 
+  - Migration gerada pelo CLI (`1792945993822-CreateVideos.ts`) e formatada pelo Prettier via `eslint --fix`.
+  - Como `Channel` ganhou `@OneToMany` para `Video`, as 10 specs existentes com `ALL_ENTITIES` precisaram incluir `Video` (senão o TypeORM não resolve a metadata da relação).
+  - O teste de migrations fazia `DROP TABLE ... CASCADE` em paralelo (`Promise.all`) — com a FK `videos→channels` isso passou a dar deadlock; trocado por um único `DROP TABLE a, b, ... CASCADE`.
+  - Criado `src/test/video-factory.ts` (`createTestChannel`, `buildVideo`) para reuso nas SIs seguintes.
+  - Correção na SI-03.2: `fetch` tipado não aceita `Buffer` como body (o ts-jest não acusou, o `tsc` sim) — passado como `Uint8Array`.
 
 ### SI-03.4 — Fila: QueueModule (BullMQ) e VideoProcessingProducer
 - **Status:** pending
