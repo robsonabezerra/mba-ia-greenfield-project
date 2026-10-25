@@ -1,7 +1,7 @@
 ---
 scope_type: phase
 related_phases: [3]
-status: pending
+status: decided
 date: 2026-10-25
 scope_description: "Backend foundation for video ingestion: object storage usage, background job queue, direct-to-storage resumable upload of files up to 10GB, draft pre-registration, FFmpeg worker (metadata + thumbnail), unique video URLs, streaming and download delivery, and the video status lifecycle."
 ---
@@ -44,7 +44,8 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 **Recommendation:** **Option A (BullMQ on Redis)** — Official NestJS integration with job semantics this phase actually needs (attempts + exponential backoff, idempotent `jobId`, stalled recovery, concurrency control), at the cost of one lightweight Redis container. pg-boss's transactional enqueue is attractive but TD-15 covers consistency without it, and RabbitMQ would force hand-built retry topologies for a single job type.
 
-**Decision:** _[pending]_
+**Decision:** A (BullMQ on Redis)
+**Libraries:** @nestjs/bullmq@^12.0.0, bullmq@^6.4.2
 
 ---
 
@@ -70,7 +71,8 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 **Recommendation:** **Option A (AWS SDK v3)** — It is the only option that presigns individual multipart parts (required by TD-04) and keeps one code path for MinIO in development and S3 in production.
 
-**Decision:** _[pending]_
+**Decision:** A (AWS SDK v3)
+**Libraries:** @aws-sdk/client-s3@^3.1156.0, @aws-sdk/s3-request-presigner@^3.1156.0
 
 ---
 
@@ -96,7 +98,8 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 **Recommendation:** **Option A (single private bucket, `videos/{videoId}/...` keys, internal + public endpoints)** — Minimal bootstrap, keys derived from the immutable id, and no accidental public exposure before Phase 04 defines visibility. The bucket is created by a one-shot Compose init service using the bundled `mc` CLI.
 
-**Decision:** _[pending]_
+**Decision:** A (Single private bucket, per-video key prefix, internal + public endpoints)
+**Libraries:** —
 
 ---
 
@@ -132,7 +135,10 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 **Recommendation:** **Option A (S3 multipart with presigned part URLs)** — It is the only option that meets 10GB, keeps every video byte off the API, and is resumable, using storage-native primitives already chosen in TD-02. The draft video is created at `POST /videos` (initiation), which directly realizes "pré-cadastro como rascunho ao iniciar o upload". Depends on TD-02 and TD-03.
 
-**Decision:** _[pending]_
+**Decision:** A (S3 multipart upload with presigned part URLs)
+**Libraries:** @aws-sdk/client-s3@^3.1156.0, @aws-sdk/s3-request-presigner@^3.1156.0
+
+**Note:** Resolved with phase-03-videos validation AMB-2 (2026-10-25): the draft's `title` defaults to the original file name without its extension; the client may send an optional `title` at initiation. Description/category stay empty until Phase 04.
 
 ---
 
@@ -158,7 +164,8 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 **Recommendation:** **Option A (fixed server-defined part size, double size check)** — Simplest contract for any client and the strongest server-side enforcement of the 10GB limit. Accepted content types are restricted at initiation to video MIME types (`video/*`); the authoritative format check is ffprobe in the worker (TD-07).
 
-**Decision:** _[pending]_
+**Decision:** A (Server-defined fixed part size; declared size validated at initiation and verified at completion)
+**Libraries:** —
 
 ---
 
@@ -189,7 +196,8 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 **Recommendation:** **Option A (same codebase, separate entrypoint + `video-worker` Compose service)** — Matches the architecture's separate worker container while reusing every existing building block; isolation is achieved at process/container level without monorepo tooling. Depends on TD-01.
 
-**Decision:** _[pending]_
+**Decision:** A (Same NestJS codebase, separate entrypoint and Compose service)
+**Libraries:** —
 
 ---
 
@@ -220,7 +228,8 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 **Recommendation:** **Option A (OS ffmpeg/ffprobe via `spawn`)** — Avoids a deprecated wrapper and install-time binary downloads; the Debian package is pinned by the image, and ffprobe JSON is a stable contract the worker can parse with typed code.
 
-**Decision:** _[pending]_
+**Decision:** A (System ffmpeg/ffprobe via child_process.spawn)
+**Libraries:** —
 
 ---
 
@@ -246,7 +255,8 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 **Recommendation:** **Option A (presigned URL as FFmpeg input)** — Metadata and a single frame need a tiny fraction of the file; streaming by range keeps worker disk constant regardless of upload size. Only the generated thumbnail is written to a temp file before upload.
 
-**Decision:** _[pending]_
+**Decision:** A (Presigned GET URL as FFmpeg input)
+**Libraries:** —
 
 ---
 
@@ -277,7 +287,8 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 **Recommendation:** **Option B (10% of duration, clamped, single seek, JPEG 1280px wide)** — Good-enough quality for an automatic thumbnail at the cost of one seek; custom thumbnails arrive in Phase 04 ("thumbnail customizada"). Depends on TD-07 and TD-08.
 
-**Decision:** _[pending]_
+**Decision:** B (10% of duration, clamped, single seek, JPEG 1280px wide)
+**Libraries:** —
 
 ---
 
@@ -308,7 +319,8 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 **Recommendation:** **Option C (hybrid)** — The phase names duration explicitly ("extração de duração e metadados"), so it earns a typed column; the remaining technical attributes go to a documented `jsonb` object to avoid migrations for every new field.
 
-**Decision:** _[pending]_
+**Decision:** C (Hybrid — typed duration_seconds + jsonb metadata)
+**Libraries:** —
 
 ---
 
@@ -339,7 +351,8 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 **Recommendation:** **Option B (11-char random base64url `slug` with unique index + retry)** — Short like the plan asks, unguessable for Phase 04's unlisted links, and conflict-free by constraint. The `slug` is the video's public identifier in every `/videos/:slug` route; the UUID stays internal.
 
-**Decision:** _[pending]_
+**Decision:** B (11-char random base64url slug with unique index + retry)
+**Libraries:** —
 
 ---
 
@@ -370,7 +383,8 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 **Recommendation:** **Option A (302 to presigned storage URLs for stream, download and thumbnail)** — Delivers range-based streaming and attachment downloads with no bytes through the API, exactly as the architecture diagram routes them; HLS remains a future option without changing the URL contract.
 
-**Decision:** _[pending]_
+**Decision:** A (302 redirect to short-lived presigned storage URLs)
+**Libraries:** @aws-sdk/s3-request-presigner@^3.1156.0
 
 ---
 
@@ -396,7 +410,8 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 **Recommendation:** **Option A (public by slug for `ready` videos; owner-only details while not ready)** — Keeps the delivery contract stable across Phases 04/05 (they add visibility filters on top) and lets standard media elements consume the stream URL. Depends on TD-11 and TD-12.
 
-**Decision:** _[pending]_
+**Decision:** A (Public by slug for ready videos; owner-only details while not ready)
+**Libraries:** —
 
 ---
 
@@ -422,7 +437,10 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 **Recommendation:** **Option A (four-state enum with retries and terminal `failed` + reason)** — Matches the phase wording, keeps every transition owned by exactly one component, and makes failure explicit in the database.
 
-**Decision:** _[pending]_
+**Decision:** A (draft → processing → ready/failed, retries with backoff, failed + reason)
+**Libraries:** bullmq@^6.4.2
+
+**Note:** Resolved with phase-03-videos validation AMB-1 (2026-10-25): `draft` is the ingestion state (pre-registered, upload not yet completed) of this lifecycle — it is NOT the publication draft of Phase 04. Publication (draft → published, visibility) is a separate dimension that Phase 04 introduces.
 
 ---
 
@@ -453,7 +471,8 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 **Recommendation:** **Option A (guarded transition + deterministic jobId + idempotent worker)** — Covers duplicates and redeliveries with mechanisms BullMQ already provides; the outbox's guarantees do not justify its machinery for one job type in this phase.
 
-**Decision:** _[pending]_
+**Decision:** A (DB-guarded transition + deterministic jobId = video id + idempotent worker)
+**Libraries:** bullmq@^6.4.2
 
 ---
 
@@ -483,7 +502,8 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 **Recommendation:** **Option A (real MinIO + Redis + FFmpeg, generated fixtures, isolated queue prefix)** — The risky contracts of this phase only exist against a real S3 API and real media; this deliberately replaces the guide's filesystem-adapter suggestion for storage, which cannot express presigned multipart or range delivery. Unit tests (mocked collaborators) remain for branching logic.
 
-**Decision:** _[pending]_
+**Decision:** A (Real MinIO + Redis + FFmpeg from Compose, generated fixtures, isolated queue prefix)
+**Libraries:** —
 
 ---
 
@@ -491,19 +511,19 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 
 | ID | Scope | Decision | Recommendation | Choice |
 |----|-------|----------|---------------|--------|
-| TD-01 | Backend | Background Job Queue Technology | BullMQ on Redis | _[pending]_ |
-| TD-02 | Backend | Object Storage Client Library | AWS SDK v3 | _[pending]_ |
-| TD-03 | Backend | Storage Organization, Keys and Endpoints | Single private bucket, `videos/{videoId}/...`, internal + public endpoints | _[pending]_ |
-| TD-04 | Cross-layer | Upload Protocol for Files up to 10GB | S3 multipart with presigned part URLs | _[pending]_ |
-| TD-05 | Cross-layer | Upload Size Limit and Part Sizing Policy | Fixed server part size + double size check | _[pending]_ |
-| TD-06 | Backend | Video Worker Runtime Model | Same codebase, separate entrypoint + Compose service | _[pending]_ |
-| TD-07 | Backend | FFmpeg Integration | OS ffmpeg/ffprobe via `spawn` | _[pending]_ |
-| TD-08 | Backend | Worker Access to the Source Video | Presigned URL as FFmpeg input | _[pending]_ |
-| TD-09 | Backend | Thumbnail Frame Selection | 10% of duration, single seek, JPEG 1280px | _[pending]_ |
-| TD-10 | Backend | Media Metadata Persistence Shape | Hybrid: typed duration + `jsonb` metadata | _[pending]_ |
-| TD-11 | Cross-layer | Unique Video URL Identifier | 11-char random base64url `slug` + unique index | _[pending]_ |
-| TD-12 | Cross-layer | Playback (Streaming) and Download Delivery | 302 to presigned storage URLs | _[pending]_ |
-| TD-13 | Cross-layer | Access Policy for Video Delivery in Phase 03 | Public by slug when `ready`; owner-only while not ready | _[pending]_ |
-| TD-14 | Cross-layer | Video Status Lifecycle and Failure Handling | `draft → processing → ready \| failed` + retries | _[pending]_ |
-| TD-15 | Backend | Job Publishing Consistency and Idempotency | Guarded transition + `jobId` = video id + idempotent worker | _[pending]_ |
-| TD-16 | Backend | Testing Strategy for Storage, Queue and FFmpeg | Real MinIO + Redis + FFmpeg, generated fixtures | _[pending]_ |
+| TD-01 | Backend | Background Job Queue Technology | BullMQ on Redis | A (BullMQ on Redis) |
+| TD-02 | Backend | Object Storage Client Library | AWS SDK v3 | A (AWS SDK v3) |
+| TD-03 | Backend | Storage Organization, Keys and Endpoints | Single private bucket, `videos/{videoId}/...`, internal + public endpoints | A (Single private bucket, per-video key prefix, internal + public endpoints) |
+| TD-04 | Cross-layer | Upload Protocol for Files up to 10GB | S3 multipart with presigned part URLs | A (S3 multipart upload with presigned part URLs) |
+| TD-05 | Cross-layer | Upload Size Limit and Part Sizing Policy | Fixed server part size + double size check | A (Server-defined fixed part size; declared size validated at initiation and verified at completion) |
+| TD-06 | Backend | Video Worker Runtime Model | Same codebase, separate entrypoint + Compose service | A (Same NestJS codebase, separate entrypoint and Compose service) |
+| TD-07 | Backend | FFmpeg Integration | OS ffmpeg/ffprobe via `spawn` | A (System ffmpeg/ffprobe via child_process.spawn) |
+| TD-08 | Backend | Worker Access to the Source Video | Presigned URL as FFmpeg input | A (Presigned GET URL as FFmpeg input) |
+| TD-09 | Backend | Thumbnail Frame Selection | 10% of duration, single seek, JPEG 1280px | B (10% of duration, clamped, single seek, JPEG 1280px wide) |
+| TD-10 | Backend | Media Metadata Persistence Shape | Hybrid: typed duration + `jsonb` metadata | C (Hybrid — typed duration_seconds + jsonb metadata) |
+| TD-11 | Cross-layer | Unique Video URL Identifier | 11-char random base64url `slug` + unique index | B (11-char random base64url slug with unique index + retry) |
+| TD-12 | Cross-layer | Playback (Streaming) and Download Delivery | 302 to presigned storage URLs | A (302 redirect to short-lived presigned storage URLs) |
+| TD-13 | Cross-layer | Access Policy for Video Delivery in Phase 03 | Public by slug when `ready`; owner-only while not ready | A (Public by slug for ready videos; owner-only details while not ready) |
+| TD-14 | Cross-layer | Video Status Lifecycle and Failure Handling | `draft → processing → ready \| failed` + retries | A (draft → processing → ready/failed, retries with backoff, failed + reason) |
+| TD-15 | Backend | Job Publishing Consistency and Idempotency | Guarded transition + `jobId` = video id + idempotent worker | A (DB-guarded transition + deterministic jobId = video id + idempotent worker) |
+| TD-16 | Backend | Testing Strategy for Storage, Queue and FFmpeg | Real MinIO + Redis + FFmpeg, generated fixtures | A (Real MinIO + Redis + FFmpeg from Compose, generated fixtures, isolated queue prefix) |

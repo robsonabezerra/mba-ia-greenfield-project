@@ -2,65 +2,89 @@
 kind: phase
 name: phase-03-videos
 status: dirty
-issue_count: 18
+issue_count: 2
 sources_mtime:
-  docs/phases/phase-03-videos/context.md: "2026-10-25T12:36:40-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T12:33:32-03:00"
+  docs/phases/phase-03-videos/context.md: "2026-10-25T12:44:12-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T12:43:53-03:00"
 issues:
+  - id: IC-1
+    status: open
+    summary: "TD-16 (MinIO real em testes) contradiz o guia de testes (adapter de filesystem)"
+  - id: MD-1
+    status: open
+    summary: "Sem TD para limpeza de uploads multipart abandonados (partes órfãs)"
   - id: AMB-1
-    status: open
+    status: resolved
     summary: "'rascunho' (Fase 03) vs fluxo rascunho → publicação (Fase 04): fronteira ambígua"
+    resolved_by: phase-03-videos/TD-14
   - id: AMB-2
-    status: open
+    status: resolved
     summary: "Pré-cadastro automático: quais campos o rascunho recebe sem input do usuário"
+    resolved_by: phase-03-videos/TD-04
   - id: OQ-1
-    status: open
+    status: resolved
     summary: "TD-01 pending — Background Job Queue Technology"
+    resolved_by: phase-03-videos/TD-01
   - id: OQ-2
-    status: open
+    status: resolved
     summary: "TD-02 pending — Object Storage Client Library"
+    resolved_by: phase-03-videos/TD-02
   - id: OQ-3
-    status: open
+    status: resolved
     summary: "TD-03 pending — Storage Organization, Keys and Endpoints"
+    resolved_by: phase-03-videos/TD-03
   - id: OQ-4
-    status: open
+    status: resolved
     summary: "TD-04 pending — Upload Protocol for Files up to 10GB"
+    resolved_by: phase-03-videos/TD-04
   - id: OQ-5
-    status: open
+    status: resolved
     summary: "TD-05 pending — Upload Size Limit and Part Sizing Policy"
+    resolved_by: phase-03-videos/TD-05
   - id: OQ-6
-    status: open
+    status: resolved
     summary: "TD-06 pending — Video Worker Runtime Model"
+    resolved_by: phase-03-videos/TD-06
   - id: OQ-7
-    status: open
+    status: resolved
     summary: "TD-07 pending — FFmpeg Integration"
+    resolved_by: phase-03-videos/TD-07
   - id: OQ-8
-    status: open
+    status: resolved
     summary: "TD-08 pending — Worker Access to the Source Video"
+    resolved_by: phase-03-videos/TD-08
   - id: OQ-9
-    status: open
+    status: resolved
     summary: "TD-09 pending — Thumbnail Frame Selection"
+    resolved_by: phase-03-videos/TD-09
   - id: OQ-10
-    status: open
+    status: resolved
     summary: "TD-10 pending — Media Metadata Persistence Shape"
+    resolved_by: phase-03-videos/TD-10
   - id: OQ-11
-    status: open
+    status: resolved
     summary: "TD-11 pending — Unique Video URL Identifier"
+    resolved_by: phase-03-videos/TD-11
   - id: OQ-12
-    status: open
+    status: resolved
     summary: "TD-12 pending — Playback (Streaming) and Download Delivery"
+    resolved_by: phase-03-videos/TD-12
   - id: OQ-13
-    status: open
+    status: resolved
     summary: "TD-13 pending — Access Policy for Video Delivery in Phase 03"
+    resolved_by: phase-03-videos/TD-13
   - id: OQ-14
-    status: open
+    status: resolved
     summary: "TD-14 pending — Video Status Lifecycle and Failure Handling"
+    resolved_by: phase-03-videos/TD-14
   - id: OQ-15
-    status: open
+    status: resolved
     summary: "TD-15 pending — Job Publishing Consistency and Idempotency"
+    resolved_by: phase-03-videos/TD-15
   - id: OQ-16
-    status: open
+    status: resolved
     summary: "TD-16 pending — Testing Strategy for Storage, Queue and FFmpeg"
+    resolved_by: phase-03-videos/TD-16
 advisories: []
 ---
 
@@ -70,16 +94,15 @@ advisories: []
 
 ### Inconsistencies
 
-_None._
+- **IC-1** — `## Decisions Detail → phase-03-videos/TD-16` decides "Real MinIO + Redis + FFmpeg from Compose" for storage tests, while `## Testing Requirements` (from `testing-guide-nestjs-project` → `references/external-systems.md`) states "Object Storage via a local-filesystem adapter in tests". The implementer loads that guide at every SI (`/implement` Step 2), so the two sources will give contradictory instructions for every storage test. Explicit choice: (a) keep TD-16 and update the testing guide's Object Storage (and Message Queue — technology now decided) strategy to match the decided infrastructure as part of this phase; (b) keep the guide and supersede TD-16 with a filesystem adapter.
 
 ### Ambiguities
 
-- **AMB-1** — The capability "Pré-cadastro automático do vídeo como rascunho ao iniciar o upload" uses the word *rascunho*, while `## Scope → Out of scope` assigns the "fluxo de publicação" to the neighbor Fase 04 (whose own bullet is "Fluxo de rascunho → publicação"). It is not stated whether the Phase 03 *rascunho* is the same state Phase 04 publishes from, or only the ingestion state "upload not finished" — the answer changes the Data Model (one column vs two dimensions) and what Phase 04 inherits. Explicit choice: (a) Phase 03 *rascunho* = ingestion state inside the video status lifecycle (`phase-03-videos/TD-14`); publication becomes a separate dimension introduced by Phase 04; (b) Phase 03 *rascunho* = publication draft, so Phase 03 must also model "unpublished" independently of processing.
-- **AMB-2** — "Pré-cadastro **automático**" does not say which fields the draft receives without user input, while the video record needs at least a title (Phase 04 later edits "título, descrição, categoria"). Without this, `/plan-build` cannot fix the initiation request contract. Explicit choice: (a) title defaults to the original file name without extension (client may send an optional `title`), other descriptive fields stay empty until Phase 04; (b) the client must send a title at initiation (required field).
+_None._
 
 ### Missing Decisions
 
-_None._
+- **MD-1** — Capability "Upload de vídeos com suporte a arquivos de até 10GB sem impacto na performance" is covered by `phase-03-videos/TD-04`, whose decided option accepts as a con that "Abandoned uploads leave orphan parts until aborted (needs an abort endpoint and/or storage cleanup)" — but no TD decides how abandoned multipart uploads (and their `draft` videos) are cleaned up. Up to 10GB of orphan parts per abandoned upload directly affects storage cost. Explicit choice: run /research with related_phases=[3] to add a TD covering abandoned-upload cleanup (client abort endpoint, storage-side expiry of incomplete multipart uploads, and/or a scheduled sweeper).
 
 ### Dependency Gaps
 
@@ -91,22 +114,7 @@ _None._
 
 ### Unresolved Open Questions
 
-- **OQ-1** — TD-01 pending — Background Job Queue Technology. Resolution: fill the **Decision:** field of TD-01 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
-- **OQ-2** — TD-02 pending — Object Storage Client Library. Resolution: fill the **Decision:** field of TD-02 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
-- **OQ-3** — TD-03 pending — Storage Organization, Keys and Endpoints. Resolution: fill the **Decision:** field of TD-03 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
-- **OQ-4** — TD-04 pending — Upload Protocol for Files up to 10GB. Resolution: fill the **Decision:** field of TD-04 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
-- **OQ-5** — TD-05 pending — Upload Size Limit and Part Sizing Policy. Resolution: fill the **Decision:** field of TD-05 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
-- **OQ-6** — TD-06 pending — Video Worker Runtime Model. Resolution: fill the **Decision:** field of TD-06 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
-- **OQ-7** — TD-07 pending — FFmpeg Integration. Resolution: fill the **Decision:** field of TD-07 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
-- **OQ-8** — TD-08 pending — Worker Access to the Source Video. Resolution: fill the **Decision:** field of TD-08 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
-- **OQ-9** — TD-09 pending — Thumbnail Frame Selection. Resolution: fill the **Decision:** field of TD-09 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
-- **OQ-10** — TD-10 pending — Media Metadata Persistence Shape. Resolution: fill the **Decision:** field of TD-10 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
-- **OQ-11** — TD-11 pending — Unique Video URL Identifier. Resolution: fill the **Decision:** field of TD-11 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
-- **OQ-12** — TD-12 pending — Playback (Streaming) and Download Delivery. Resolution: fill the **Decision:** field of TD-12 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
-- **OQ-13** — TD-13 pending — Access Policy for Video Delivery in Phase 03. Resolution: fill the **Decision:** field of TD-13 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
-- **OQ-14** — TD-14 pending — Video Status Lifecycle and Failure Handling. Resolution: fill the **Decision:** field of TD-14 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
-- **OQ-15** — TD-15 pending — Job Publishing Consistency and Idempotency. Resolution: fill the **Decision:** field of TD-15 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
-- **OQ-16** — TD-16 pending — Testing Strategy for Storage, Queue and FFmpeg. Resolution: fill the **Decision:** field of TD-16 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate phase-03-videos.
+_None._
 
 ### UI Coverage Gaps
 
@@ -114,4 +122,21 @@ _None._
 
 ## Resolved Issues
 
-_No issues resolved yet._
+- **AMB-1** _(resolved_by phase-03-videos/TD-14)_ — 'rascunho' (Fase 03) vs fluxo rascunho → publicação (Fase 04): fronteira ambígua. Phase 03 `draft` = ingestion state of the status lifecycle; publication is a separate Phase 04 dimension (recorded as **Note:** on TD-14).
+- **AMB-2** _(resolved_by phase-03-videos/TD-04)_ — Pré-cadastro automático: quais campos o rascunho recebe sem input do usuário. Draft `title` defaults to the original file name without extension; optional `title` accepted at initiation (recorded as **Note:** on TD-04).
+- **OQ-1** _(resolved_by phase-03-videos/TD-01)_ — TD-01 pending — Background Job Queue Technology.
+- **OQ-2** _(resolved_by phase-03-videos/TD-02)_ — TD-02 pending — Object Storage Client Library.
+- **OQ-3** _(resolved_by phase-03-videos/TD-03)_ — TD-03 pending — Storage Organization, Keys and Endpoints.
+- **OQ-4** _(resolved_by phase-03-videos/TD-04)_ — TD-04 pending — Upload Protocol for Files up to 10GB.
+- **OQ-5** _(resolved_by phase-03-videos/TD-05)_ — TD-05 pending — Upload Size Limit and Part Sizing Policy.
+- **OQ-6** _(resolved_by phase-03-videos/TD-06)_ — TD-06 pending — Video Worker Runtime Model.
+- **OQ-7** _(resolved_by phase-03-videos/TD-07)_ — TD-07 pending — FFmpeg Integration.
+- **OQ-8** _(resolved_by phase-03-videos/TD-08)_ — TD-08 pending — Worker Access to the Source Video.
+- **OQ-9** _(resolved_by phase-03-videos/TD-09)_ — TD-09 pending — Thumbnail Frame Selection.
+- **OQ-10** _(resolved_by phase-03-videos/TD-10)_ — TD-10 pending — Media Metadata Persistence Shape.
+- **OQ-11** _(resolved_by phase-03-videos/TD-11)_ — TD-11 pending — Unique Video URL Identifier.
+- **OQ-12** _(resolved_by phase-03-videos/TD-12)_ — TD-12 pending — Playback (Streaming) and Download Delivery.
+- **OQ-13** _(resolved_by phase-03-videos/TD-13)_ — TD-13 pending — Access Policy for Video Delivery in Phase 03.
+- **OQ-14** _(resolved_by phase-03-videos/TD-14)_ — TD-14 pending — Video Status Lifecycle and Failure Handling.
+- **OQ-15** _(resolved_by phase-03-videos/TD-15)_ — TD-15 pending — Job Publishing Consistency and Idempotency.
+- **OQ-16** _(resolved_by phase-03-videos/TD-16)_ — TD-16 pending — Testing Strategy for Storage, Queue and FFmpeg.
