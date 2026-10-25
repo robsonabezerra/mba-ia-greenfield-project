@@ -37,88 +37,52 @@ How each external system is handled in tests. These strategies were confirmed wi
 
 ---
 
-## Object Storage — Local Filesystem
+## Object Storage — Real MinIO (Docker)
 
-**Strategy:** Local filesystem storage in development and tests. S3 in production.
+**Strategy:** Real S3-compatible storage — the Compose `minio` service (bucket created by the one-shot `minio-init`). Decided in `phase-03-videos/TD-16`: presigned multipart uploads and Range delivery only exist against a real S3 API, so there is no filesystem adapter.
 
-**Approach:**
-- The storage layer should use an abstraction (e.g., `StorageService` interface) that allows switching between local filesystem and S3
-- In tests, use the local filesystem adapter — no mocking needed
-- Use a temporary directory for test uploads: `os.tmpdir()` or a dedicated `test-uploads/` directory
-- Clean up test files in `afterAll`
+**How tests reach it:**
+- `StorageModule` + `ConfigModule.forRoot({ isGlobal: true, load: [storageConfig] })` — the same module the app uses (two `S3Client`s: internal `S3_ENDPOINT`, public `S3_PUBLIC_ENDPOINT`).
+- `src/test/setup-test-env.ts` (Jest `setupFiles`) forces `S3_PUBLIC_ENDPOINT = S3_ENDPOINT`, so presigned URLs signed in tests are reachable from inside the container (SigV4 signs the host — a URL signed for `localhost:9000` would not work there).
+- Client-side steps are exercised for real: `fetch(url, { method: 'PUT', body: new Uint8Array(part) })` on presigned part URLs, `fetch(url, { headers: { Range: 'bytes=0-99' } })` on delivery URLs (expect `206` + `Content-Range`).
+- Presigned URLs are signed for `GET`/`PUT` — do not probe them with `HEAD` (signature mismatch → 403); use `GET` with `Range: bytes=0-0`.
 
-**Setup pattern:**
+**Test isolation:**
+- Use unique keys (`test/storage/${randomUUID()}/...`) or the video's own `videos/{id}/...` keys.
+- `cleanVideoStorage(dataSource, storage)` (`src/test/videos-test-module.ts`) aborts open multipart uploads and deletes the objects of every video row — call it before `cleanAllTables` in `beforeEach`/`afterAll`.
+- Media fixtures are generated at test time with FFmpeg lavfi sources (`generateTestVideo` in `src/test/video-fixtures.ts`); no binary fixtures are committed. Pass `videoBitrate` (strict CBR) when a test needs a file larger than one 5 MiB part.
+
 ```typescript
-// In test module setup
-{
-  provide: 'STORAGE_CONFIG',
-  useValue: {
-    driver: 'local',
-    basePath: path.join(os.tmpdir(), 'streamtube-test-uploads'),
-  },
-}
-```
-
-**Integration test:**
-```typescript
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-
-describe('StorageService (integration)', () => {
-  const testDir = path.join(os.tmpdir(), 'streamtube-test-uploads');
-
-  afterAll(() => {
-    fs.rmSync(testDir, { recursive: true, force: true });
-  });
-
-  it('should upload and retrieve a file', async () => {
-    const buffer = Buffer.from('test content');
-    const key = await storageService.upload(buffer, 'test.txt');
-
-    const retrieved = await storageService.get(key);
-    expect(retrieved.toString()).toBe('test content');
-  });
-});
+const module = await createVideosTestingModule([VideosService, VideoProcessingProducer]);
+const storage = module.get(StorageService);
+const uploadId = await storage.createMultipartUpload(key, 'video/mp4');
+const url = await storage.presignUploadPart(key, uploadId, 1, 300);
+expect((await fetch(url, { method: 'PUT', body: new Uint8Array(bytes) })).status).toBe(200);
 ```
 
 ---
 
-## Message Queue — Real (Docker)
+## Message Queue — Real BullMQ on Redis (Docker)
 
-**Strategy:** Real message broker in Docker. The specific technology is TBD per the architecture diagram (likely BullMQ with Redis or RabbitMQ).
+**Strategy:** Real Redis (Compose `redis` service) through BullMQ (`phase-03-videos/TD-01`).
 
-**When the queue technology is chosen, configure:**
-- A queue broker service in `compose.yaml` (e.g., Redis for BullMQ, RabbitMQ for AMQP)
-- Test isolation: use dedicated test queues or clean queues between tests
-- For publisher tests: assert the job is enqueued with correct data
-- For consumer tests: submit a job and assert the processing outcome
+**Configuration in tests:**
+- `QueueModule` (`BullModule.forRootAsync` with `queueConfig`) + `BullModule.registerQueue({ name: VIDEO_PROCESSING_QUEUE })`.
+- `setup-test-env.ts` sets `QUEUE_PREFIX = 'streamtube-test'`: tests never share keys with the long-running `video-worker` service (dev prefix `streamtube`), so that worker never steals test jobs.
+- `ioredis` must be installed — it is an optional peer of `bullmq@6`.
+- bullmq 6 removed `queue.client`; assert on jobs (`queue.getJob(id)`, `job.queueQualifiedName`, `queue.getJobCounts(...)`, `queue.getJobSchedulers()`), not raw Redis keys.
 
-**Setup pattern (BullMQ example):**
-```typescript
-// In test module
-BullModule.forRoot({
-  connection: {
-    host: process.env.REDIS_HOST ?? 'localhost',
-    port: Number(process.env.REDIS_PORT ?? 6379),
-  },
-}),
-BullModule.registerQueue({ name: 'video-processing' }),
-```
+**Test isolation:** `await queue.obliterate({ force: true })` in `beforeEach` and `afterAll`.
+
+**Publisher tests:** assert the job exists with the expected `name`, `data`, `jobId` and options.
+
+**Consumer tests:** bootstrap the worker in-process — `Test.createTestingModule({ imports: [WorkerModule] })` + `await module.init()` — enqueue a job and poll the database until the video reaches a terminal status (`ready`/`failed`). Full-flow E2E (`test/video-pipeline.e2e-spec.ts`) runs the HTTP app and the worker context in the same Jest process.
 
 ```typescript
-describe('VideoService (integration - queue)', () => {
-  it('should enqueue a processing job on upload', async () => {
-    await videoService.upload(videoData);
-
-    const queue = module.get<Queue>(getQueueToken('video-processing'));
-    const jobs = await queue.getJobs(['waiting']);
-    expect(jobs).toHaveLength(1);
-    expect(jobs[0].data).toEqual(
-      expect.objectContaining({ videoId: expect.any(String) }),
-    );
-  });
-});
+const worker = await Test.createTestingModule({ imports: [WorkerModule] }).compile();
+await worker.init();
+await queue.add(VIDEO_JOBS.PROCESS, { videoId }, { jobId: videoId });
+// poll videoRepository until status is ready/failed, then assert
 ```
 
 ---

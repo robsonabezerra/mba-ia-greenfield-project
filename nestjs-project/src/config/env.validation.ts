@@ -21,4 +21,25 @@ export const envValidationSchema = Joi.object({
   MAIL_PORT: Joi.number().default(1025),
   MAIL_FROM: Joi.string().default('"StreamTube" <noreply@streamtube.com>'),
   SWAGGER_ENABLED: Joi.string().valid('true', 'false').default('false'),
+  REDIS_HOST: Joi.string().default('redis'),
+  REDIS_PORT: Joi.number().port().default(6379),
+  QUEUE_PREFIX: Joi.string().default('streamtube'),
+  S3_ENDPOINT: Joi.string().uri().default('http://minio:9000'),
+  S3_PUBLIC_ENDPOINT: Joi.string().uri().default('http://localhost:9000'),
+  S3_REGION: Joi.string().default('us-east-1'),
+  S3_ACCESS_KEY_ID: Joi.string().required(),
+  S3_SECRET_ACCESS_KEY: Joi.string().required(),
+  S3_BUCKET: Joi.string().default('streamtube'),
+  VIDEO_MAX_SIZE_BYTES: Joi.number().integer().min(1).default(10737418240),
+  // S3 requires every part except the last to be at least 5 MiB
+  UPLOAD_PART_SIZE_BYTES: Joi.number().integer().min(5242880).default(67108864),
+  UPLOAD_EXPIRATION_HOURS: Joi.number().integer().min(1).default(24),
+  PRESIGNED_URL_EXPIRES_IN_SECONDS: Joi.number()
+    .integer()
+    .min(60)
+    .max(604800)
+    .default(3600),
+  VIDEO_PROCESSING_ATTEMPTS: Joi.number().integer().min(1).default(3),
+  UPLOAD_SWEEP_INTERVAL_MINUTES: Joi.number().integer().min(1).default(60),
+  WORKER_CONCURRENCY: Joi.number().integer().min(1).default(1),
 });
