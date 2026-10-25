@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 13/16 completed
+**SIs:** 14/16 completed
 
 ### SI-03.1 — Infra: dependências, configuração e serviços de storage e fila no Compose
 - **Status:** completed
@@ -108,9 +108,11 @@
   - Vídeo não-`ready` responde 404 também para outros usuários autenticados, não 403, para não revelar rascunhos de terceiros (Authorization Matrix).
 
 ### SI-03.14 — Streaming, download e thumbnail por redirecionamento a URLs assinadas
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** download-filename.util.spec: 4, videos.service.spec: +5, videos-delivery.e2e-spec: 7 — passing (src/videos 54/54)
+- **Observations:** 
+  - As rotas usam `@Redirect()` do Nest com `{ url }` dinâmico e `@Header('Cache-Control', 'no-store')` — a URL assinada expira, então a resposta 302 não pode ser cacheada.
+  - O e2e segue o `Location` com `fetch` de dentro do container (o endpoint público é igual ao interno nos testes) e valida o 206 + `Content-Range` servido pelo próprio MinIO: nenhum byte de vídeo passa pela API.
 
 ### SI-03.15 — Pipeline completo de ingestão (E2E com worker real)
 - **Status:** pending

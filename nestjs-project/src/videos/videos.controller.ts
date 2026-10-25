@@ -3,10 +3,12 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
   Post,
+  Redirect,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -19,6 +21,7 @@ import { SkipThrottle } from '@nestjs/throttler';
 import type { JwtPayload } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { OptionalAuth } from '../auth/decorators/optional-auth.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { ApiErrorEnvelope } from '../common/openapi/api-error-envelope.dto';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { CompletedUploadResponseDto } from './dto/completed-upload-response.dto';
@@ -32,6 +35,10 @@ import { VideoResponseDto } from './dto/video-response.dto';
 import { VideosService } from './videos.service';
 
 const errorSchema = { $ref: getSchemaPath(ApiErrorEnvelope) };
+const redirectHeaders = {
+  Location: { description: 'Short-lived presigned object storage URL' },
+  'Cache-Control': { description: 'no-store' },
+};
 
 @ApiTags('videos')
 @SkipThrottle()
@@ -273,5 +280,89 @@ export class VideosController {
     @Param('slug') slug: string,
   ): Promise<void> {
     await this.videosService.cancelUpload(user.sub, slug);
+  }
+
+  @Public()
+  @Get(':slug/stream')
+  @Redirect()
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Stream a video',
+    description:
+      'Redirects to a short-lived presigned storage URL; storage answers Range requests with 206 Partial Content, so playback starts without downloading the whole file.',
+  })
+  @ApiResponse({
+    status: 302,
+    description: 'Redirect to the presigned stream URL',
+    headers: redirectHeaders,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Video not found',
+    schema: errorSchema,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Video is not ready',
+    schema: errorSchema,
+  })
+  async stream(@Param('slug') slug: string): Promise<{ url: string }> {
+    return { url: await this.videosService.getDeliveryUrl(slug, 'stream') };
+  }
+
+  @Public()
+  @Get(':slug/download')
+  @Redirect()
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Download a video',
+    description:
+      'Redirects to a presigned storage URL that serves the original file as an attachment.',
+  })
+  @ApiResponse({
+    status: 302,
+    description: 'Redirect to the presigned download URL',
+    headers: redirectHeaders,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Video not found',
+    schema: errorSchema,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Video is not ready',
+    schema: errorSchema,
+  })
+  async download(@Param('slug') slug: string): Promise<{ url: string }> {
+    return { url: await this.videosService.getDeliveryUrl(slug, 'download') };
+  }
+
+  @Public()
+  @Get(':slug/thumbnail')
+  @Redirect()
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Get the video thumbnail',
+    description:
+      'Redirects to a presigned storage URL of the generated JPEG thumbnail.',
+  })
+  @ApiResponse({
+    status: 302,
+    description: 'Redirect to the presigned thumbnail URL',
+    headers: redirectHeaders,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Video not found',
+    schema: errorSchema,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Video is not ready',
+    schema: errorSchema,
+  })
+  async thumbnail(@Param('slug') slug: string): Promise<{ url: string }> {
+    return { url: await this.videosService.getDeliveryUrl(slug, 'thumbnail') };
   }
 }

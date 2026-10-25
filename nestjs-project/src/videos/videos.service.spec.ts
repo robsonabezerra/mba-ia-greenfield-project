@@ -12,6 +12,7 @@ import {
   VideoFileTooLargeException,
   VideoNotFoundException,
   VideoNotOwnedException,
+  VideoNotReadyException,
   VideoNotUploadableException,
 } from '../common/exceptions/domain.exception';
 import videosConfig from '../config/videos.config';
@@ -90,6 +91,9 @@ describe('VideosService', () => {
             completeMultipartUpload: jest.fn().mockResolvedValue(undefined),
             headObject: jest.fn(),
             deleteObject: jest.fn().mockResolvedValue(undefined),
+            presignGetObject: jest
+              .fn()
+              .mockResolvedValue('https://storage/get'),
           },
         },
         {
@@ -493,6 +497,71 @@ describe('VideosService', () => {
       await expect(service.getVideo('abcdefghijk', 'user-2')).rejects.toThrow(
         VideoNotFoundException,
       );
+    });
+  });
+
+  describe('getDeliveryUrl', () => {
+    const ready = () =>
+      draftVideo({
+        status: VideoStatus.READY,
+        title: 'Minha aula',
+        original_file_name: 'aula.mp4',
+        content_type: 'video/mp4',
+        thumbnail_key: 'videos/video-1/thumbnail.jpg',
+      });
+
+    it('should sign the source with its content type for streaming', async () => {
+      videoRepository.findOne.mockResolvedValue(ready());
+
+      await expect(
+        service.getDeliveryUrl('abcdefghijk', 'stream'),
+      ).resolves.toBe('https://storage/get');
+      expect(storageService.presignGetObject).toHaveBeenCalledWith(
+        'videos/video-1/source',
+        { expiresIn: 3600, responseContentType: 'video/mp4' },
+      );
+    });
+
+    it('should sign the source as an attachment for download', async () => {
+      videoRepository.findOne.mockResolvedValue(ready());
+
+      await service.getDeliveryUrl('abcdefghijk', 'download');
+
+      expect(storageService.presignGetObject).toHaveBeenCalledWith(
+        'videos/video-1/source',
+        expect.objectContaining({
+          responseContentDisposition: 'attachment; filename="Minha aula.mp4"',
+        }),
+      );
+    });
+
+    it('should sign the thumbnail as JPEG', async () => {
+      videoRepository.findOne.mockResolvedValue(ready());
+
+      await service.getDeliveryUrl('abcdefghijk', 'thumbnail');
+
+      expect(storageService.presignGetObject).toHaveBeenCalledWith(
+        'videos/video-1/thumbnail.jpg',
+        { expiresIn: 3600, responseContentType: 'image/jpeg' },
+      );
+    });
+
+    it('should refuse a video that is not ready', async () => {
+      videoRepository.findOne.mockResolvedValue(
+        draftVideo({ status: VideoStatus.PROCESSING }),
+      );
+
+      await expect(
+        service.getDeliveryUrl('abcdefghijk', 'stream'),
+      ).rejects.toThrow(VideoNotReadyException);
+    });
+
+    it('should refuse an unknown slug', async () => {
+      videoRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.getDeliveryUrl('missing', 'download'),
+      ).rejects.toThrow(VideoNotFoundException);
     });
   });
 });

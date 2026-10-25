@@ -15,6 +15,7 @@ import {
   VideoFileTooLargeException,
   VideoNotFoundException,
   VideoNotOwnedException,
+  VideoNotReadyException,
   VideoNotUploadableException,
 } from '../common/exceptions/domain.exception';
 import videosConfig from '../config/videos.config';
@@ -28,6 +29,7 @@ import type {
   UploadStateResponseDto,
 } from './dto/upload-parts-response.dto';
 import type { VideoResponseDto } from './dto/video-response.dto';
+import { buildDownloadFileName } from './download-filename.util';
 import { Video } from './entities/video.entity';
 import { generateVideoSlug } from './slug.util';
 import { VideoDraftsService } from './video-drafts.service';
@@ -39,6 +41,9 @@ const MAX_SLUG_ATTEMPTS = 5;
 const SLUG_COLUMN = 'slug';
 const HOUR_MS = 60 * 60 * 1000;
 const SIZE_MISMATCH_ERROR = 'UPLOAD_SIZE_MISMATCH';
+const THUMBNAIL_CONTENT_TYPE = 'image/jpeg';
+
+export type DeliveryKind = 'stream' | 'download' | 'thumbnail';
 
 @Injectable()
 export class VideosService {
@@ -145,6 +150,40 @@ export class VideosService {
       created_at: video.created_at.toISOString(),
       processed_at: video.processed_at?.toISOString() ?? null,
     };
+  }
+
+  /**
+   * Short-lived presigned storage URL for a ready video; storage serves
+   * Range/206 itself, so no video byte goes through the API (per TD-12).
+   */
+  async getDeliveryUrl(slug: string, kind: DeliveryKind): Promise<string> {
+    const video = await this.videoRepository.findOne({ where: { slug } });
+    if (!video) throw new VideoNotFoundException();
+    if (video.status !== VideoStatus.READY) throw new VideoNotReadyException();
+
+    const expiresIn = this.config.presignedUrlExpiresInSeconds;
+    switch (kind) {
+      case 'stream':
+        return this.storageService.presignGetObject(video.storage_key, {
+          expiresIn,
+          responseContentType: video.content_type,
+        });
+      case 'download':
+        return this.storageService.presignGetObject(video.storage_key, {
+          expiresIn,
+          responseContentType: video.content_type,
+          responseContentDisposition: `attachment; filename="${buildDownloadFileName(
+            video.title,
+            video.original_file_name,
+          )}"`,
+        });
+      case 'thumbnail':
+        if (!video.thumbnail_key) throw new VideoNotReadyException();
+        return this.storageService.presignGetObject(video.thumbnail_key, {
+          expiresIn,
+          responseContentType: THUMBNAIL_CONTENT_TYPE,
+        });
+    }
   }
 
   /** Presigned PUT URLs for the requested parts of the owner's draft. */
