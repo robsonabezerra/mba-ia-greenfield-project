@@ -2,7 +2,7 @@
 
 ## Environment Startup Verification
 
-**Default behavior:** starting the environment means starting **only infrastructure services** (database, mail, etc.) — **never** start the NestJS application server unless the user explicitly asks to run/serve the project (e.g., "rode o projeto", "suba o servidor", "run the app").
+**Default behavior:** starting the environment means starting **only infrastructure services** (database, mail, Redis, MinIO and the video worker) — **never** start the NestJS application server unless the user explicitly asks to run/serve the project (e.g., "rode o projeto", "suba o servidor", "run the app"). The `video-worker` service is infrastructure: Compose starts it automatically.
 
 After starting infrastructure, always confirm the containers are up before proceeding:
 
@@ -13,6 +13,9 @@ docker compose ps   # all services must show status "running"
 Then verify each infrastructure service is actually ready to accept connections — not just running:
 
 - **PostgreSQL:** `docker compose exec db pg_isready -U streamtube` — expect `accepting connections`
+- **Redis:** `docker compose exec redis redis-cli ping` — expect `PONG`
+- **MinIO:** `docker compose ps minio` shows `healthy` and `minio-init` shows `Exited (0)` (bucket `S3_BUCKET` created)
+- **Video worker:** `docker compose logs video-worker` contains `Video worker started`
 
 Only start the NestJS dev server (`npm run start:dev`) when the user **explicitly** asks to run the application — never as part of "start the environment".
 
@@ -34,6 +37,11 @@ docker compose exec nestjs-api npm run start:dev
 Services:
 - `nestjs-api` — NestJS API, port `3000`
 - `db` — PostgreSQL 17, port `5432`, database `streamtube`, user/password `streamtube`
+- `mailpit` — SMTP capture, SMTP `1025`, UI `8025`
+- `redis` — Redis 8 (BullMQ broker, AOF on), port `6379`
+- `minio` — S3-compatible object storage (`pgsty/minio`, the official `minio/minio` image is no longer published), API `9000`, console `9001`; credentials = `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY`
+- `minio-init` — one-shot `mc mb --ignore-existing` that creates the private bucket `S3_BUCKET`, then exits
+- `video-worker` — same image and codebase as the API, runs `src/worker.ts` (BullMQ consumer + FFmpeg); started under `init: true` so `SIGTERM` closes the worker gracefully
 
 All verification and teardown commands run on the **host machine**:
 
@@ -62,11 +70,13 @@ docker compose down
 npm run start:dev                        # Dev server with hot-reload
 npm run build                            # Compile to dist/
 npm run start:prod                       # Run compiled build
+npm run start:worker                     # Video worker from source (the video-worker service already runs it)
+npm run start:worker:prod                # Video worker from dist/worker.js
 
 npm test                                 # Unit tests
 npm run test:watch                       # Unit tests in watch mode
 npm run test:cov                         # Coverage report
-npm run test:e2e                         # End-to-end tests (always with --runInBand)
+npm run test:e2e                         # End-to-end tests (the script already passes --runInBand)
 
 npx tsc --noEmit                         # Type-check (required before declaring a task done)
 npm run lint                             # ESLint with auto-fix
@@ -119,7 +129,7 @@ Conventions for **how to write** each kind of test (mocking patterns, AAA struct
 
 These settings are required in `package.json` (jest config) and `test/jest-e2e.json` for the project's tests to work correctly:
 
-- `setupFiles: ["dotenv/config"]` — without this, `.env` is not loaded inside the Jest process. `DB_HOST`, `JWT_SECRET`, etc. fall back to undefined or to the host's `localhost`, breaking container-to-container DNS.
+- `setupFiles: ["dotenv/config", "<rootDir>/test/setup-test-env.ts"]` (unit) and `["dotenv/config", "<rootDir>/../src/test/setup-test-env.ts"]` (e2e — `rootDir` there is `test/`) — without `dotenv/config`, `.env` is not loaded inside the Jest process (`DB_HOST`, `JWT_SECRET`, etc. fall back to undefined or to the host's `localhost`). `src/test/setup-test-env.ts` then forces `S3_PUBLIC_ENDPOINT = S3_ENDPOINT` (presigned URLs reachable from inside the container), `QUEUE_PREFIX = streamtube-test` (the running `video-worker` never consumes test jobs) and `UPLOAD_PART_SIZE_BYTES = 5242880`.
 - `testRegex: '.*\\.(spec|integration-spec)\\.ts$'` — covers both unit (`*.spec.ts`) and integration (`*.integration-spec.ts`) suffixes.
 
 Do not add new test-file suffixes; if a new test type is needed, update the regex deliberately.
@@ -148,6 +158,25 @@ NestJS with standard module structure. Source lives in `src/`, compiled output i
 
 - Each domain feature gets its own module (e.g., `UsersModule`, `VideosModule`) registered in `AppModule`
 - Controllers handle HTTP routing; Services hold business logic; both are scoped to their module
+- Two entrypoints share the codebase: `src/main.ts` (HTTP API, `AppModule`) and `src/worker.ts` (video worker, `WorkerModule` — `NestFactory.createApplicationContext`, no HTTP modules). Both use `configModuleOptions` (`src/config/config-module.options.ts`) and `buildTypeOrmOptions` (`src/database/typeorm-options.ts`).
+
+### Video modules (Phase 03)
+
+| Path | Role |
+|------|------|
+| `src/videos/` | `VideosModule`: `Video` entity (`videos` table), `VideosController` (`/videos`), `VideosService` (draft pre-registration, part signing, upload state, completion, cancellation, details, delivery URLs), `VideoProcessingProducer`, `VideoDraftsService` |
+| `src/storage/` | `StorageModule`/`StorageService`: AWS SDK v3 against MinIO/S3 — multipart, presigned part/GET URLs, object ops. Two clients: internal (`S3_ENDPOINT`) and public (`S3_PUBLIC_ENDPOINT`, signing only) |
+| `src/queue/` | `QueueModule`: `BullModule.forRootAsync` (Redis connection + `QUEUE_PREFIX`) |
+| `src/video-processing/` | Worker side: `VideoProcessor` (queue `video-processing`), `VideoProcessingService` (ffprobe metadata + thumbnail → `ready`/`failed`), `FfmpegService` (`spawn` of OS binaries), `ExpiredUploadsSweeperService` + `ExpiredUploadsSchedulerService` (hourly cleanup of expired drafts) |
+| `src/worker.module.ts`, `src/worker.ts` | Worker root module and entrypoint |
+
+Endpoints (all keyed by the video `slug`): `POST /videos`, `POST /videos/:slug/upload/parts`, `GET /videos/:slug/upload`, `POST /videos/:slug/upload/complete`, `DELETE /videos/:slug/upload` (owner, Bearer), `GET /videos/:slug` (`@OptionalAuth()` — public when `ready`), `GET /videos/:slug/stream|download|thumbnail` (`@Public()`, `302` to presigned storage URLs). `VideosController` is `@SkipThrottle()` — rate limiting stays on auth endpoints.
+
+Gotchas:
+- `@nestjs/bullmq` is pinned to `^11.0.5`: `12.x` is ESM-only and cannot be loaded by this CommonJS project. `bullmq@6` needs `ioredis` installed explicitly (optional peer).
+- The S3 clients use `requestChecksumCalculation`/`responseChecksumValidation: 'WHEN_REQUIRED'`; the SDK default would sign checksums into presigned part URLs.
+- Presigned URLs are signed for a specific method — probe them with `GET` + `Range: bytes=0-0`, never `HEAD`.
+- Test helpers: `src/test/videos-test-module.ts` (real DB + MinIO + Redis module, `cleanVideoStorage`), `src/test/video-factory.ts`, `src/test/video-fixtures.ts` (FFmpeg lavfi MP4 generator), `test/helpers/` (app with `main.ts` globals, authenticated user, typed response bodies).
 
 ## Code Conventions
 

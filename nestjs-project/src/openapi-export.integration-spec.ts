@@ -128,4 +128,61 @@ describe('exportSpec (integration)', () => {
       }
     }
   });
+
+  describe('videos', () => {
+    const videoOperations = [
+      { path: '/videos', method: 'post', protected: true },
+      { path: '/videos/{slug}', method: 'get', protected: false },
+      { path: '/videos/{slug}/upload/parts', method: 'post', protected: true },
+      { path: '/videos/{slug}/upload', method: 'get', protected: true },
+      {
+        path: '/videos/{slug}/upload/complete',
+        method: 'post',
+        protected: true,
+      },
+      { path: '/videos/{slug}/upload', method: 'delete', protected: true },
+      { path: '/videos/{slug}/stream', method: 'get', protected: false },
+      { path: '/videos/{slug}/download', method: 'get', protected: false },
+      { path: '/videos/{slug}/thumbnail', method: 'get', protected: false },
+    ];
+
+    const operationOf = (path: string, method: string) =>
+      (
+        document.paths as Record<
+          string,
+          Record<string, Record<string, unknown>>
+        >
+      )[path]?.[method];
+
+    it('documents the 9 video operations with a summary', () => {
+      for (const { path, method } of videoOperations) {
+        const operation = operationOf(path, method);
+        expect(operation).toBeDefined();
+        expect((operation.summary as string).length).toBeGreaterThan(0);
+      }
+    });
+
+    it('requires access-token only on the owner upload operations', () => {
+      for (const { path, method, protected: isProtected } of videoOperations) {
+        const security = operationOf(path, method).security as
+          | Array<Record<string, unknown>>
+          | undefined;
+        const requiresToken =
+          security?.some((req) => 'access-token' in req) ?? false;
+        expect({ path, method, requiresToken }).toEqual({
+          path,
+          method,
+          requiresToken: isProtected,
+        });
+      }
+    });
+
+    it('documents the delivery redirects as 302', () => {
+      for (const kind of ['stream', 'download', 'thumbnail']) {
+        const responses = operationOf(`/videos/{slug}/${kind}`, 'get')
+          .responses as Record<string, unknown>;
+        expect(responses['302']).toBeDefined();
+      }
+    });
+  });
 });
