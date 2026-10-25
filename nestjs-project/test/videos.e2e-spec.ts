@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
@@ -16,6 +17,18 @@ interface CreatedVideoBody {
   title: string;
   status: string;
   upload: { part_size: number; part_count: number; expires_at: string };
+}
+
+interface SignedPartsBody {
+  parts: { part_number: number; url: string }[];
+  expires_at: string;
+}
+
+interface UploadStateBody {
+  part_size: number;
+  part_count: number;
+  expires_at: string;
+  uploaded_parts: { part_number: number; size: number }[];
 }
 
 const MAX_SIZE = 10737418240;
@@ -127,6 +140,136 @@ describe('Videos (e2e)', () => {
         .post('/videos')
         .send({ file_name: 'a.mp4', file_size: 1, content_type: 'video/mp4' })
         .expect(401);
+    });
+  });
+
+  async function createDraft(
+    fileSize = 6 * 1024 * 1024,
+  ): Promise<CreatedVideoBody> {
+    const res = await createVideo(ownerToken, {
+      file_name: 'clip.mp4',
+      file_size: fileSize,
+      content_type: 'video/mp4',
+    }).expect(201);
+    return bodyOf<CreatedVideoBody>(res);
+  }
+
+  const signParts = (token: string, slug: string, partNumbers: unknown) =>
+    request(app.getHttpServer())
+      .post(`/videos/${slug}/upload/parts`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ part_numbers: partNumbers });
+
+  const uploadState = (token: string, slug: string) =>
+    request(app.getHttpServer())
+      .get(`/videos/${slug}/upload`)
+      .set('Authorization', `Bearer ${token}`);
+
+  describe('POST /videos/:slug/upload/parts', () => {
+    it('returns 200 with URLs in ascending order bounded by the draft expiration', async () => {
+      const draft = await createDraft();
+
+      const res = await signParts(ownerToken, draft.slug, [2, 1]).expect(200);
+
+      const body = bodyOf<SignedPartsBody>(res);
+      expect(body.parts.map((p) => p.part_number)).toEqual([1, 2]);
+      expect(new Date(body.expires_at).getTime()).toBeLessThanOrEqual(
+        new Date(draft.upload.expires_at).getTime(),
+      );
+    });
+
+    it('returns a URL the storage accepts for the part bytes', async () => {
+      const draft = await createDraft();
+      const res = await signParts(ownerToken, draft.slug, [1]).expect(200);
+
+      const put = await fetch(bodyOf<SignedPartsBody>(res).parts[0].url, {
+        method: 'PUT',
+        body: new Uint8Array(randomBytes(1024)),
+      });
+
+      expect(put.status).toBe(200);
+    });
+
+    it('returns 400 INVALID_UPLOAD_PART above the part count', async () => {
+      const draft = await createDraft();
+
+      const res = await signParts(ownerToken, draft.slug, [
+        draft.upload.part_count + 1,
+      ]).expect(400);
+
+      expect(bodyOf<ErrorBody>(res).error).toBe('INVALID_UPLOAD_PART');
+    });
+
+    it('returns 400 VALIDATION_ERROR for an empty list', async () => {
+      const draft = await createDraft();
+
+      const res = await signParts(ownerToken, draft.slug, []).expect(400);
+
+      expect(bodyOf<ErrorBody>(res).error).toBe('VALIDATION_ERROR');
+    });
+
+    it('returns 403 VIDEO_NOT_OWNED for another user', async () => {
+      const draft = await createDraft();
+      const { accessToken: otherToken } = await createAuthenticatedUser(
+        app,
+        'other@example.com',
+      );
+
+      const res = await signParts(otherToken, draft.slug, [1]).expect(403);
+
+      expect(bodyOf<ErrorBody>(res).error).toBe('VIDEO_NOT_OWNED');
+    });
+
+    it('returns 404 VIDEO_NOT_FOUND for an unknown slug', async () => {
+      const res = await signParts(ownerToken, 'AAAAAAAAAAA', [1]).expect(404);
+
+      expect(bodyOf<ErrorBody>(res).error).toBe('VIDEO_NOT_FOUND');
+    });
+
+    it('returns 401 without a token', async () => {
+      const draft = await createDraft();
+
+      await request(app.getHttpServer())
+        .post(`/videos/${draft.slug}/upload/parts`)
+        .send({ part_numbers: [1] })
+        .expect(401);
+    });
+  });
+
+  describe('GET /videos/:slug/upload', () => {
+    it('lists the part already uploaded with its size', async () => {
+      const draft = await createDraft();
+      const signed = await signParts(ownerToken, draft.slug, [1]).expect(200);
+      const bytes = randomBytes(5 * 1024 * 1024);
+      await fetch(bodyOf<SignedPartsBody>(signed).parts[0].url, {
+        method: 'PUT',
+        body: new Uint8Array(bytes),
+      });
+
+      const res = await uploadState(ownerToken, draft.slug).expect(200);
+
+      expect(bodyOf<UploadStateBody>(res)).toMatchObject({
+        part_count: 2,
+        uploaded_parts: [{ part_number: 1, size: bytes.length }],
+      });
+    });
+
+    it('returns 403 VIDEO_NOT_OWNED for another user', async () => {
+      const draft = await createDraft();
+      const { accessToken: otherToken } = await createAuthenticatedUser(
+        app,
+        'other@example.com',
+      );
+
+      const res = await uploadState(otherToken, draft.slug).expect(403);
+
+      expect(bodyOf<ErrorBody>(res).error).toBe('VIDEO_NOT_OWNED');
+    });
+
+    it('returns 404 VIDEO_NOT_FOUND for an unknown slug', async () => {
+      const res = await uploadState(ownerToken, 'AAAAAAAAAAA').expect(404);
+
+      expect(bodyOf<ErrorBody>(res).error).toBe('VIDEO_NOT_FOUND');
     });
   });
 });

@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { TestingModule } from '@nestjs/testing';
 import { DataSource, Repository } from 'typeorm';
 import { Channel } from '../channels/entities/channel.entity';
@@ -75,6 +76,34 @@ describe('VideosService (integration)', () => {
       const second = await service.initiateUpload(channel.user_id, dto);
 
       expect(first.slug).not.toBe(second.slug);
+    });
+  });
+
+  describe('signUploadParts / getUploadState', () => {
+    it('should sign a URL the storage accepts and report the stored part', async () => {
+      const created = await service.initiateUpload(channel.user_id, {
+        file_name: 'clip.mp4',
+        file_size: 6 * 1024 * 1024,
+        content_type: 'video/mp4',
+      });
+      const bytes = randomBytes(5 * 1024 * 1024);
+
+      const signed = await service.signUploadParts(
+        channel.user_id,
+        created.slug,
+        { part_numbers: [1] },
+      );
+      const put = await fetch(signed.parts[0].url, {
+        method: 'PUT',
+        body: new Uint8Array(bytes),
+      });
+      const state = await service.getUploadState(channel.user_id, created.slug);
+
+      expect(put.status).toBe(200);
+      expect(state.part_count).toBe(2);
+      expect(state.uploaded_parts).toEqual([
+        { part_number: 1, size: bytes.length },
+      ]);
     });
   });
 });

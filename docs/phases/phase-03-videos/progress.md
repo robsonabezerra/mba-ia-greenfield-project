@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 5/16 completed
+**SIs:** 6/16 completed
 
 ### SI-03.1 — Infra: dependências, configuração e serviços de storage e fila no Compose
 - **Status:** completed
@@ -47,9 +47,11 @@
   - Helpers de teste novos: `src/test/videos-test-module.ts` (módulo com DB+MinIO+Redis reais e limpeza de storage), `test/helpers/create-test-app.ts` (globais do `main.ts`) e `test/helpers/auth-user.ts` (registro→confirmação→login, limpando o throttler).
 
 ### SI-03.6 — Assinatura de partes e estado do upload (retomada)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** videos.service.spec: +7, videos.service.integration-spec: +1, videos.e2e-spec: +10 — passing (src/videos 28/28, videos.e2e 16/16)
+- **Observations:** 
+  - `findOwnedDraft` exige também `upload_id` não nulo (rascunho com multipart aberto) — o mesmo guard é reutilizado por conclusão e cancelamento nas próximas SIs.
+  - A expiração das URLs é limitada pela expiração do rascunho (`created_at + UPLOAD_EXPIRATION_HOURS`), coberto por teste unitário com rascunho a 15 minutos de expirar.
 
 ### SI-03.7 — Conclusão do upload e enfileiramento do processamento
 - **Status:** pending
