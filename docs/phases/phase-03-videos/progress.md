@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 9/16 completed
+**SIs:** 10/16 completed
 
 ### SI-03.1 — Infra: dependências, configuração e serviços de storage e fila no Compose
 - **Status:** completed
@@ -77,9 +77,11 @@
   - `generateTestVideo` aceita `videoBitrate` para gerar MP4s maiores que uma parte de 5 MiB no e2e do pipeline (SI-03.15).
 
 ### SI-03.10 — VideoProcessingService (metadados + thumbnail)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 20/20 passing em src/video-processing (video-processing.service.spec: 8, video-processing.service.integration-spec: 3, video-processing.module.spec: 1, + specs da SI-03.9)
+- **Observations:** 
+  - Além de 'sem stream de vídeo', erros do ffprobe que indicam bytes não decodificáveis (`Invalid data found when processing input`, `moov atom not found`, `could not find codec parameters`) viram `UnrecoverableError` — retentar não ajuda; os demais erros (rede, storage) propagam e seguem o retry do BullMQ.
+  - O FFmpeg lê a fonte pela URL assinada do endpoint interno (`presignInternalGetObject`), sem baixar o arquivo; só o JPEG do thumbnail vai para um diretório temporário, removido em `finally`.
 
 ### SI-03.11 — Worker: entrypoint, VideoProcessor e serviço video-worker no Compose
 - **Status:** pending
