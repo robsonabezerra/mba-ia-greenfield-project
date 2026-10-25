@@ -39,6 +39,8 @@ export function generateTestVideo(
   }
   args.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p');
   if (videoBitrate) {
+    // Strict CBR (filler data): lavfi test patterns compress to almost nothing
+    // otherwise, and multipart tests need files larger than one part.
     args.push(
       '-b:v',
       videoBitrate,
@@ -48,6 +50,8 @@ export function generateTestVideo(
       videoBitrate,
       '-bufsize',
       videoBitrate,
+      '-x264-params',
+      'nal-hrd=cbr',
     );
   }
   if (withAudio) args.push('-c:a', 'aac', '-shortest');

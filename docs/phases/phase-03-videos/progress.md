@@ -116,10 +116,10 @@
 
 ### SI-03.15 — Pipeline completo de ingestão (E2E com worker real)
 - **Status:** completed
-- **Tests:** 2/2 passing (video-pipeline.e2e-spec.ts: caminho feliz multipart → ready → stream 206/download/thumbnail; caminho de falha → failed)
-- **Observations:** 
+- **Tests:** 2/2 passing (video-pipeline.e2e-spec.ts: caminho feliz multipart (≥2 partes) → ready → stream 206/download/thumbnail; caminho de falha → failed)
+- **Observations:**
   - A API (`createTestApp`) e o `WorkerModule` sobem no mesmo processo de teste com o prefixo de fila de teste; o `video-worker` de dev (prefixo `streamtube`) não consome esses jobs.
-  - O MP4 é gerado em 1280x720 a 12 Mbit/s para ultrapassar uma parte de 5 MiB; o teste afirma `part_count ≥ 2`.
+  - A asserção `part_count ≥ 2` revelou que o fixture saía com ~0,5 MB (uma parte só) porque o x264 ignora `minrate` sem CBR estrito; `generateTestVideo` passou a usar `-x264-params nal-hrd=cbr` quando `videoBitrate` é informado (~9 MB, 2 partes de 5 MiB). O commit 50d6e25 entrou com esse teste vermelho (o exit code checado no encadeamento era o do grep, não o do Jest) e foi corrigido no commit seguinte; desde então o exit code do Jest é verificado explicitamente.
   - URLs presigned são assinadas para `GET` (o SigV4 inclui o método): verificar headers com `HEAD` dá 403; o teste usa `GET` com `Range: bytes=0-0`.
 
 ### SI-03.16 — Documentação: guia de testes, CLAUDE.md, diagrama e OpenAPI
