@@ -3,7 +3,7 @@ kind: phase
 name: phase-03-videos
 sources_mtime:
   docs/project-plan.md: "2026-10-25T12:18:51-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T12:54:57-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T13:42:43-03:00"
   docs/decisions/technical-decisions-openapi-docs-nestjs.md: "2026-10-25T12:22:15-03:00"
   docs/phases/phase-01-configuracao-base/context.md: "2026-10-25T12:22:15-03:00"
   docs/phases/phase-02-auth/context.md: "2026-10-25T12:22:15-03:00"
@@ -48,7 +48,8 @@ sources_mtime:
 
 | Ref | Source | Scope | Topic | Status | Decision | Libraries |
 |-----|--------|-------|-------|--------|----------|-----------|
-| phase-03-videos/TD-01 | technical-decisions-phase-03-videos.md | Backend | Background Job Queue Technology | decided | A (BullMQ on Redis) | @nestjs/bullmq@^12.0.0, bullmq@^6.4.2 |
+| phase-03-videos/TD-01 | technical-decisions-phase-03-videos.md | Backend | Background Job Queue Technology | decided | A (BullMQ on Redis) | @nestjs/bullmq@^11.0.5, bullmq@^6.4.2, ioredis@^5.11.1 |
+| └─ Last revision: 2026-10-25 — Pinned `@nestjs/bullmq@^11.0.5` (instead of `^12.0.0`) and added `ioredis@^5.11.1` | | | | | | |
 | phase-03-videos/TD-02 | technical-decisions-phase-03-videos.md | Backend | Object Storage Client Library | decided | A (AWS SDK v3) | @aws-sdk/client-s3@^3.1156.0, @aws-sdk/s3-request-presigner@^3.1156.0 |
 | phase-03-videos/TD-03 | technical-decisions-phase-03-videos.md | Backend | Storage Organization, Keys and Endpoints | decided | A (Single private bucket, per-video key prefix, internal + public endpoints) | — |
 | phase-03-videos/TD-04 | technical-decisions-phase-03-videos.md | Cross-layer | Upload Protocol for Files up to 10GB | decided | A (S3 multipart upload with presigned part URLs) | @aws-sdk/client-s3@^3.1156.0, @aws-sdk/s3-request-presigner@^3.1156.0 |
@@ -91,7 +92,10 @@ _Source files:_
 
 **Recommendation:** BullMQ on Redis — Official NestJS integration with job semantics this phase actually needs (attempts + exponential backoff, idempotent `jobId`, stalled recovery, concurrency control), at the cost of one lightweight Redis container. pg-boss's transactional enqueue is attractive but TD-15 covers consistency without it, and RabbitMQ would force hand-built retry topologies for a single job type.
 
-**Libraries:** @nestjs/bullmq@^12.0.0, bullmq@^6.4.2
+**Libraries:** @nestjs/bullmq@^11.0.5, bullmq@^6.4.2, ioredis@^5.11.1
+
+**Revisions:**
+- 2026-10-25 — Pinned `@nestjs/bullmq@^11.0.5` (instead of `^12.0.0`) and added `ioredis@^5.11.1`. Rationale: found at SI-03.4 — `@nestjs/bullmq@12.0.0` is published ESM-only (`"type": "module"`), which the CommonJS NestJS 11 / ts-jest project cannot load; 11.0.5 is CommonJS, peers `@nestjs/* ^10 || ^11` and `bullmq ^3–^6`. `bullmq@6` made `ioredis` an optional peer dependency (v6 changelog: "Redis users must install ioredis explicitly"); 5.11.1 is the version bullmq 6.4.2 itself tests against.
 
 ### phase-03-videos/TD-02
 

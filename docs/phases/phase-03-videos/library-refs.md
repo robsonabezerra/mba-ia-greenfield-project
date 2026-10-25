@@ -1,13 +1,17 @@
 ---
 libs:
   "@nestjs/bullmq":
-    version: "^12.0.0"
+    version: "^11.0.5"
     context7_id: "/nestjs/bull"
     fetched_at: "2026-10-25T12:45:38-03:00"
   bullmq:
     version: "^6.4.2"
     context7_id: "/taskforcesh/bullmq"
     fetched_at: "2026-10-25T12:45:38-03:00"
+  ioredis:
+    version: "^5.11.1"
+    context7_id: "/taskforcesh/bullmq"
+    fetched_at: "2026-10-25T13:40:00-03:00"
   "@aws-sdk/client-s3":
     version: "^3.1156.0"
     context7_id: "/aws/aws-sdk-js-v3"
@@ -17,12 +21,12 @@ libs:
     context7_id: "/aws/aws-sdk-js-v3"
     fetched_at: "2026-10-25T12:45:38-03:00"
 sources_mtime:
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T12:54:57-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T13:42:43-03:00"
 ---
 
 # phase-03-videos — Library References
 
-Distilled docs for the libraries decided in this phase, pulled via Context7 on 2026-10-25. Version compatibility checked against the npm registry the same day: `@nestjs/bullmq@12.0.0` peers `@nestjs/common`/`@nestjs/core` `^10 || ^11 || ^12` (installed: 11.1.16) and `bullmq ^3 || ^4 || ^5 || ^6`. Re-fetch when the TDs below change.
+Distilled docs for the libraries decided in this phase, pulled via Context7 on 2026-10-25. Version compatibility checked against the npm registry the same day. **Revision (SI-03.4):** `@nestjs/bullmq@12.0.0` is ESM-only and cannot be loaded by this CommonJS project (Jest fails with `SyntaxError: Unexpected token 'export'`); the project pins `@nestjs/bullmq@^11.0.5` (CommonJS, peers `@nestjs/* ^10 || ^11` and `bullmq ^3–^6`) — see `phase-03-videos/TD-01` Revisions. Re-fetch when the TDs below change.
 
 ## @nestjs/bullmq
 
@@ -80,7 +84,11 @@ export class VideoProcessor extends WorkerHost {
 
 ## bullmq
 
-**Source:** `/taskforcesh/bullmq` (Context7, trust 9.2; version `v6.3.11` indexed, npm latest `6.4.2`). Maps to `phase-03-videos/TD-01`, `phase-03-videos/TD-14`, `phase-03-videos/TD-15`, `phase-03-videos/TD-17`.
+**Source:** `/taskforcesh/bullmq` (Context7, trust 9.2; version `v6.3.11` indexed, npm latest `6.4.2`).
+
+**v6 breaking changes that affect this project (Context7, `docs/gitbook/changelog.md`):** `ioredis` is no longer a direct dependency — it is an optional peer and must be installed explicitly; `Queue#client`/`Worker#blockingClient` were removed (raw Redis access only through `queue.getBackend()`), so tests assert on `job.queueQualifiedName` (`"{prefix}:{queue}"`) instead of raw keys.
+
+Maps to `phase-03-videos/TD-01`, `phase-03-videos/TD-14`, `phase-03-videos/TD-15`, `phase-03-videos/TD-17`.
 
 ### Retries with exponential backoff (TD-14)
 
@@ -200,3 +208,11 @@ await getSignedUrl(publicClient, new GetObjectCommand({
 - `expiresIn` defaults to **900** seconds when omitted; SigV4 caps it at 7 days.
 - `ResponseContentDisposition` / `ResponseContentType` become `response-content-*` query parameters and are only honored on signed requests.
 - `signableHeaders` / `unhoistableHeaders` force headers (e.g., `content-type`, `x-amz-checksum-sha256`) into the signature — not needed when checksums are `WHEN_REQUIRED`.
+
+## ioredis
+
+**Source:** `/taskforcesh/bullmq` → `docs/gitbook/guide/connections.md` + `package.json` (Context7). Maps to `phase-03-videos/TD-01` Revisions.
+
+- BullMQ creates its connections with ioredis by default; the `connection` options passed to `BullModule.forRootAsync` (`{ host, port }`) go straight to the ioredis constructor.
+- Peer range `ioredis >=5.0.0` (optional peer since bullmq 6); the project pins `^5.11.1`, the version bullmq 6.4.2 uses in its own test suite.
+- Workers duplicate the connection for blocking commands and force `maxRetriesPerRequest: null` on it — do not pass a shared ioredis instance that overrides it.

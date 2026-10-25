@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 3/16 completed
+**SIs:** 4/16 completed
 
 ### SI-03.1 — Infra: dependências, configuração e serviços de storage e fila no Compose
 - **Status:** completed
@@ -30,9 +30,13 @@
   - Correção na SI-03.2: `fetch` tipado não aceita `Buffer` como body (o ts-jest não acusou, o `tsc` sim) — passado como `Uint8Array`.
 
 ### SI-03.4 — Fila: QueueModule (BullMQ) e VideoProcessingProducer
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 11/11 passing (video-processing.producer.integration-spec.ts: 3, queue.module.spec.ts: 1, + videos.module.spec.ts e specs de vídeo existentes)
+- **Observations:** 
+  - `@nestjs/bullmq@12.0.0` é ESM-only (`"type": "module"`) — o Jest/CommonJS do projeto falha com `SyntaxError: Unexpected token 'export'`. Fixado `@nestjs/bullmq@^11.0.5` (CJS, peers Nest ^10
+  - ^11 e bullmq ^3–^6). Registrado como `**Revisions:**` em `phase-03-videos/TD-01`, com `library-refs.md`, `context.md`, `validation.md` e o plano reestampados e nota de amendment no SI-03.1.
+  - `bullmq@6` tornou `ioredis` peer opcional (changelog v6, via context7): sem ele a conexão nunca abre e `Queue.close()` lança `Cannot read properties of undefined (reading 'off')`. Instalado `ioredis@^5.11.1` (versão usada nos testes do próprio bullmq 6.4.2).
+  - `Queue#client` foi removido no bullmq 6; o teste de prefixo verifica `job.queueQualifiedName` em vez de chaves Redis cruas.
 
 ### SI-03.5 — Pré-cadastro do vídeo como rascunho (POST /videos)
 - **Status:** pending

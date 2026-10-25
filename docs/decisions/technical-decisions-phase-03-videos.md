@@ -45,7 +45,10 @@ _Research notes (sources consulted on 2026-10-25):_ library docs via Context7 (`
 **Recommendation:** **Option A (BullMQ on Redis)** — Official NestJS integration with job semantics this phase actually needs (attempts + exponential backoff, idempotent `jobId`, stalled recovery, concurrency control), at the cost of one lightweight Redis container. pg-boss's transactional enqueue is attractive but TD-15 covers consistency without it, and RabbitMQ would force hand-built retry topologies for a single job type.
 
 **Decision:** A (BullMQ on Redis)
-**Libraries:** @nestjs/bullmq@^12.0.0, bullmq@^6.4.2
+**Libraries:** @nestjs/bullmq@^11.0.5, bullmq@^6.4.2, ioredis@^5.11.1
+
+**Revisions:**
+- 2026-10-25 — Pinned `@nestjs/bullmq@^11.0.5` (instead of `^12.0.0`) and added `ioredis@^5.11.1`. Rationale: found at SI-03.4 — `@nestjs/bullmq@12.0.0` is published ESM-only (`"type": "module"`), which the CommonJS NestJS 11 / ts-jest project cannot load; 11.0.5 is CommonJS, peers `@nestjs/* ^10 || ^11` and `bullmq ^3–^6`. `bullmq@6` made `ioredis` an optional peer dependency (v6 changelog: "Redis users must install ioredis explicitly"); 5.11.1 is the version bullmq 6.4.2 itself tests against.
 
 ---
 

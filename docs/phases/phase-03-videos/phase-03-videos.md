@@ -3,9 +3,9 @@ kind: phase
 name: phase-03-videos
 test_specs_aware: true
 sources_mtime:
-  docs/phases/phase-03-videos/context.md: "2026-10-25T12:55:30-03:00"
-  docs/phases/phase-03-videos/library-refs.md: "2026-10-25T12:55:54-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T12:54:57-03:00"
+  docs/phases/phase-03-videos/context.md: "2026-10-25T13:42:43-03:00"
+  docs/phases/phase-03-videos/library-refs.md: "2026-10-25T13:42:53-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T13:42:43-03:00"
   docs/decisions/technical-decisions-openapi-docs-nestjs.md: "2026-10-25T12:22:15-03:00"
 ---
 
@@ -30,6 +30,8 @@ Entregar a ingestão de vídeos de ponta a ponta no backend — serviço de arma
 3. Atualizar `nestjs-project/compose.yaml` — serviços `minio` (`pgsty/minio:RELEASE.2026-08-04T00-00-00Z`, `server /data --console-address ":9001"`, portas 9000/9001, credenciais `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` = `S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY`, volume nomeado, healthcheck `curl -f http://localhost:9000/minio/health/live`), `minio-init` (mesma imagem, `mc alias set` + `mc mb --ignore-existing` do `S3_BUCKET`, `depends_on: minio: service_healthy`), `redis` (`redis:8.8-alpine`, `--appendonly yes`, volume nomeado, healthcheck `redis-cli ping`); `nestjs-api` passa a depender de `redis` (healthy) e `minio-init` (`service_completed_successfully`) (per `phase-03-videos/TD-01`, `phase-03-videos/TD-03`)
 4. Criar `src/config/storage.config.ts`, `src/config/queue.config.ts`, `src/config/videos.config.ts` (`registerAs`, chaves e defaults da tabela "Configuração nova" do Data Model), registrá-los no `load` do `ConfigModule.forRoot` em `AppModule`, estender `src/config/env.validation.ts` (`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` obrigatórias, `UPLOAD_PART_SIZE_BYTES` ≥ 5242880, demais com default) e documentar tudo em `.env.example` (per `phase-03-videos/TD-03`, `phase-03-videos/TD-05`, `phase-03-videos/TD-17`)
 5. Criar `src/test/setup-test-env.ts` (carregado após `dotenv/config` em `setupFiles` do jest unit e do `test/jest-e2e.json`) — força `S3_PUBLIC_ENDPOINT = S3_ENDPOINT` (URLs assinadas resolvíveis de dentro do container), `QUEUE_PREFIX = 'streamtube-test'` e `UPLOAD_PART_SIZE_BYTES = '5242880'` nos testes (per `phase-03-videos/TD-16`)
+
+> _Amendment (registrado na execução da SI-03.4):_ `@nestjs/bullmq` fixado em `^11.0.5` (o `12.0.0` é ESM-only) e `ioredis@^5.11.1` adicionado como peer exigido pelo `bullmq@6` — per `phase-03-videos/TD-01` Revisions.
 
 **Tests:**
 
