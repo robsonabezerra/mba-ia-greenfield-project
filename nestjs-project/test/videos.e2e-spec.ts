@@ -1,5 +1,7 @@
 import { randomBytes } from 'crypto';
+import { getQueueToken } from '@nestjs/bullmq';
 import { INestApplication } from '@nestjs/common';
+import { Queue } from 'bullmq';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
@@ -7,6 +9,7 @@ import { StorageService } from '../src/storage/storage.service';
 import { cleanAllTables } from '../src/test/create-test-data-source';
 import { cleanVideoStorage } from '../src/test/videos-test-module';
 import { Video } from '../src/videos/entities/video.entity';
+import { VIDEO_PROCESSING_QUEUE } from '../src/videos/videos.constants';
 import { createAuthenticatedUser } from './helpers/auth-user';
 import { createTestApp } from './helpers/create-test-app';
 import { bodyOf, type ErrorBody } from './helpers/response-body';
@@ -38,22 +41,26 @@ describe('Videos (e2e)', () => {
   let dataSource: DataSource;
   let storage: StorageService;
   let ownerToken: string;
+  let queue: Queue;
 
   beforeAll(async () => {
     app = await createTestApp();
     dataSource = app.get(DataSource);
     storage = app.get(StorageService);
+    queue = app.get<Queue>(getQueueToken(VIDEO_PROCESSING_QUEUE));
   });
 
   afterAll(async () => {
     await cleanVideoStorage(dataSource, storage);
     await cleanAllTables(dataSource);
+    await queue.obliterate({ force: true });
     await app.close();
   });
 
   beforeEach(async () => {
     await cleanVideoStorage(dataSource, storage);
     await cleanAllTables(dataSource);
+    await queue.obliterate({ force: true });
     ({ accessToken: ownerToken } = await createAuthenticatedUser(
       app,
       'owner@example.com',
@@ -270,6 +277,95 @@ describe('Videos (e2e)', () => {
       const res = await uploadState(ownerToken, 'AAAAAAAAAAA').expect(404);
 
       expect(bodyOf<ErrorBody>(res).error).toBe('VIDEO_NOT_FOUND');
+    });
+  });
+
+  /** Sends every slice of `bytes` to its presigned part URL. */
+  async function uploadParts(
+    slug: string,
+    bytes: Buffer,
+    partSize: number,
+    only?: number[],
+  ): Promise<void> {
+    const partCount = Math.ceil(bytes.length / partSize);
+    const numbers = only ?? Array.from({ length: partCount }, (_, i) => i + 1);
+    const signed = await signParts(ownerToken, slug, numbers).expect(200);
+    for (const part of bodyOf<SignedPartsBody>(signed).parts) {
+      const start = (part.part_number - 1) * partSize;
+      const res = await fetch(part.url, {
+        method: 'PUT',
+        body: new Uint8Array(bytes.subarray(start, start + partSize)),
+      });
+      expect(res.status).toBe(200);
+    }
+  }
+
+  const complete = (token: string, slug: string) =>
+    request(app.getHttpServer())
+      .post(`/videos/${slug}/upload/complete`)
+      .set('Authorization', `Bearer ${token}`);
+
+  describe('POST /videos/:slug/upload/complete', () => {
+    const bytes = randomBytes(6 * 1024 * 1024);
+
+    it('returns 202 processing after all parts were sent directly to storage', async () => {
+      const draft = await createDraft(bytes.length);
+      await uploadParts(draft.slug, bytes, draft.upload.part_size);
+
+      const res = await complete(ownerToken, draft.slug).expect(202);
+
+      expect(bodyOf<{ status: string }>(res).status).toBe('processing');
+      const video = await dataSource
+        .getRepository(Video)
+        .findOneByOrFail({ id: draft.id });
+      expect(video.status).toBe('processing');
+      await expect(queue.getJob(draft.id)).resolves.toMatchObject({
+        data: { videoId: draft.id },
+      });
+    });
+
+    it('is idempotent: a second call returns 202 and keeps a single job', async () => {
+      const draft = await createDraft(bytes.length);
+      await uploadParts(draft.slug, bytes, draft.upload.part_size);
+      await complete(ownerToken, draft.slug).expect(202);
+
+      const res = await complete(ownerToken, draft.slug).expect(202);
+
+      expect(bodyOf<{ status: string }>(res).status).toBe('processing');
+      const counts = await queue.getJobCounts('waiting', 'delayed', 'active');
+      expect(counts.waiting + counts.delayed + counts.active).toBe(1);
+    });
+
+    it('returns 409 UPLOAD_INCOMPLETE when a part is missing and keeps the draft', async () => {
+      const draft = await createDraft(bytes.length);
+      await uploadParts(draft.slug, bytes, draft.upload.part_size, [1]);
+
+      const res = await complete(ownerToken, draft.slug).expect(409);
+
+      expect(bodyOf<ErrorBody>(res).error).toBe('UPLOAD_INCOMPLETE');
+      const state = await uploadState(ownerToken, draft.slug).expect(200);
+      expect(bodyOf<UploadStateBody>(state).uploaded_parts).toHaveLength(1);
+    });
+
+    it('returns 409 UPLOAD_SIZE_MISMATCH when the sent bytes differ from the declared size', async () => {
+      const draft = await createDraft(bytes.length + 10);
+      await uploadParts(draft.slug, bytes, draft.upload.part_size);
+
+      const res = await complete(ownerToken, draft.slug).expect(409);
+
+      expect(bodyOf<ErrorBody>(res).error).toBe('UPLOAD_SIZE_MISMATCH');
+    });
+
+    it('returns 403 VIDEO_NOT_OWNED for another user', async () => {
+      const draft = await createDraft(bytes.length);
+      const { accessToken: otherToken } = await createAuthenticatedUser(
+        app,
+        'other@example.com',
+      );
+
+      const res = await complete(otherToken, draft.slug).expect(403);
+
+      expect(bodyOf<ErrorBody>(res).error).toBe('VIDEO_NOT_OWNED');
     });
   });
 });

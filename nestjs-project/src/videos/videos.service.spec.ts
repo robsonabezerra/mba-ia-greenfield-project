@@ -6,6 +6,9 @@ import type { Channel } from '../channels/entities/channel.entity';
 import {
   ChannelNotFoundException,
   InvalidUploadPartException,
+  ProcessingQueueUnavailableException,
+  UploadIncompleteException,
+  UploadSizeMismatchException,
   VideoFileTooLargeException,
   VideoNotFoundException,
   VideoNotOwnedException,
@@ -14,6 +17,7 @@ import {
 import videosConfig from '../config/videos.config';
 import { StorageService } from '../storage/storage.service';
 import { Video } from './entities/video.entity';
+import { VideoProcessingProducer } from './video-processing.producer';
 import { VideoStatus } from './video-status.enum';
 import { VideosService } from './videos.service';
 
@@ -45,6 +49,7 @@ describe('VideosService', () => {
   let videoRepository: jest.Mocked<Repository<Video>>;
   let channelsService: jest.Mocked<ChannelsService>;
   let storageService: jest.Mocked<StorageService>;
+  let producer: jest.Mocked<VideoProcessingProducer>;
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
@@ -55,6 +60,8 @@ describe('VideosService', () => {
           useValue: {
             create: jest.fn((data: Partial<Video>) => ({ ...data }) as Video),
             findOne: jest.fn(),
+            findOneByOrFail: jest.fn(),
+            update: jest.fn().mockResolvedValue({ affected: 1 }),
             save: jest.fn((video: Video) =>
               Promise.resolve({
                 ...video,
@@ -78,6 +85,15 @@ describe('VideosService', () => {
                 Promise.resolve(`https://storage/part-${part}`),
             ),
             listParts: jest.fn().mockResolvedValue([]),
+            completeMultipartUpload: jest.fn().mockResolvedValue(undefined),
+            headObject: jest.fn(),
+            deleteObject: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: VideoProcessingProducer,
+          useValue: {
+            enqueueProcessing: jest.fn().mockResolvedValue(undefined),
           },
         },
         { provide: videosConfig.KEY, useValue: config },
@@ -88,6 +104,7 @@ describe('VideosService', () => {
     videoRepository = module.get(getRepositoryToken(Video));
     channelsService = module.get(ChannelsService);
     storageService = module.get(StorageService);
+    producer = module.get(VideoProcessingProducer);
   });
 
   describe('initiateUpload', () => {
@@ -261,6 +278,127 @@ describe('VideosService', () => {
         part_count: 3,
         uploaded_parts: [{ part_number: 1, size: 67108864 }],
       });
+    });
+  });
+
+  describe('completeUpload', () => {
+    const FILE_SIZE = 2 * 1024;
+    const uploading = (overrides: Partial<Video> = {}) =>
+      draftVideo({
+        file_size_bytes: FILE_SIZE,
+        upload_part_count: 2,
+        ...overrides,
+      });
+    const parts = [
+      { partNumber: 1, size: 1024, etag: '"1"' },
+      { partNumber: 2, size: 1024, etag: '"2"' },
+    ];
+
+    it('should complete the multipart, mark processing and enqueue the job', async () => {
+      videoRepository.findOne.mockResolvedValue(uploading());
+      storageService.listParts.mockResolvedValue(parts);
+      storageService.headObject.mockResolvedValue({
+        contentLength: FILE_SIZE,
+        contentType: 'video/mp4',
+      });
+
+      const result = await service.completeUpload('user-1', 'abcdefghijk');
+
+      expect(result.status).toBe(VideoStatus.PROCESSING);
+      expect(storageService.completeMultipartUpload).toHaveBeenCalledWith(
+        'videos/video-1/source',
+        'upload-1',
+        parts,
+      );
+      expect(videoRepository.update).toHaveBeenCalledWith(
+        { id: 'video-1', status: VideoStatus.DRAFT },
+        { status: VideoStatus.PROCESSING },
+      );
+      expect(producer.enqueueProcessing).toHaveBeenCalledWith('video-1');
+    });
+
+    it('should reject when a part is missing and keep the upload open', async () => {
+      videoRepository.findOne.mockResolvedValue(uploading());
+      storageService.listParts.mockResolvedValue([parts[0]]);
+
+      await expect(
+        service.completeUpload('user-1', 'abcdefghijk'),
+      ).rejects.toThrow(UploadIncompleteException);
+      expect(storageService.completeMultipartUpload).not.toHaveBeenCalled();
+      expect(videoRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('should reject when the uploaded parts do not add up to the declared size', async () => {
+      videoRepository.findOne.mockResolvedValue(uploading());
+      storageService.listParts.mockResolvedValue([
+        parts[0],
+        { ...parts[1], size: 10 },
+      ]);
+
+      await expect(
+        service.completeUpload('user-1', 'abcdefghijk'),
+      ).rejects.toThrow(UploadSizeMismatchException);
+      expect(storageService.completeMultipartUpload).not.toHaveBeenCalled();
+    });
+
+    it('should delete the object and fail the video when the final object size differs', async () => {
+      videoRepository.findOne.mockResolvedValue(uploading({ upload_id: null }));
+      storageService.headObject.mockResolvedValue({
+        contentLength: 1,
+        contentType: 'video/mp4',
+      });
+
+      await expect(
+        service.completeUpload('user-1', 'abcdefghijk'),
+      ).rejects.toThrow(UploadSizeMismatchException);
+      expect(storageService.deleteObject).toHaveBeenCalledWith(
+        'videos/video-1/source',
+      );
+      expect(videoRepository.update).toHaveBeenCalledWith(
+        { id: 'video-1', status: VideoStatus.DRAFT },
+        {
+          status: VideoStatus.FAILED,
+          processing_error: 'UPLOAD_SIZE_MISMATCH',
+        },
+      );
+    });
+
+    it('should be idempotent while the video is already processing', async () => {
+      videoRepository.findOne.mockResolvedValue(
+        uploading({ status: VideoStatus.PROCESSING, upload_id: null }),
+      );
+
+      const result = await service.completeUpload('user-1', 'abcdefghijk');
+
+      expect(result.status).toBe(VideoStatus.PROCESSING);
+      expect(producer.enqueueProcessing).not.toHaveBeenCalled();
+    });
+
+    it('should revert to draft and report 503 when the queue is unavailable', async () => {
+      videoRepository.findOne.mockResolvedValue(uploading({ upload_id: null }));
+      storageService.headObject.mockResolvedValue({
+        contentLength: FILE_SIZE,
+        contentType: 'video/mp4',
+      });
+      producer.enqueueProcessing.mockRejectedValue(new Error('redis down'));
+
+      await expect(
+        service.completeUpload('user-1', 'abcdefghijk'),
+      ).rejects.toThrow(ProcessingQueueUnavailableException);
+      expect(videoRepository.update).toHaveBeenLastCalledWith(
+        { id: 'video-1', status: VideoStatus.PROCESSING },
+        { status: VideoStatus.DRAFT },
+      );
+    });
+
+    it('should reject a video that is already ready', async () => {
+      videoRepository.findOne.mockResolvedValue(
+        uploading({ status: VideoStatus.READY, upload_id: null }),
+      );
+
+      await expect(
+        service.completeUpload('user-1', 'abcdefghijk'),
+      ).rejects.toThrow(VideoNotUploadableException);
     });
   });
 });

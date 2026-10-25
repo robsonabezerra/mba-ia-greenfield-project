@@ -19,6 +19,7 @@ import type { JwtPayload } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ApiErrorEnvelope } from '../common/openapi/api-error-envelope.dto';
 import { CreateVideoDto } from './dto/create-video.dto';
+import { CompletedUploadResponseDto } from './dto/completed-upload-response.dto';
 import { CreatedVideoResponseDto } from './dto/created-video-response.dto';
 import { SignUploadPartsDto } from './dto/sign-upload-parts.dto';
 import {
@@ -159,5 +160,51 @@ export class VideosController {
     @Param('slug') slug: string,
   ): Promise<UploadStateResponseDto> {
     return this.videosService.getUploadState(user.sub, slug);
+  }
+
+  @Post(':slug/upload/complete')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Complete the upload',
+    description:
+      'Completes the multipart upload, moves the video to processing and schedules the background processing job. Idempotent while the video is processing.',
+  })
+  @ApiResponse({
+    status: 202,
+    description: 'Processing scheduled',
+    type: CompletedUploadResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: errorSchema,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Video belongs to another channel',
+    schema: errorSchema,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Video not found',
+    schema: errorSchema,
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Video not uploadable, missing parts (UPLOAD_INCOMPLETE) or size mismatch (UPLOAD_SIZE_MISMATCH)',
+    schema: errorSchema,
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'Processing queue unavailable',
+    schema: errorSchema,
+  })
+  async completeUpload(
+    @CurrentUser() user: JwtPayload,
+    @Param('slug') slug: string,
+  ): Promise<CompletedUploadResponseDto> {
+    return this.videosService.completeUpload(user.sub, slug);
   }
 }

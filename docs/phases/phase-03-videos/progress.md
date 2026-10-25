@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 6/16 completed
+**SIs:** 7/16 completed
 
 ### SI-03.1 — Infra: dependências, configuração e serviços de storage e fila no Compose
 - **Status:** completed
@@ -54,9 +54,12 @@
   - A expiração das URLs é limitada pela expiração do rascunho (`created_at + UPLOAD_EXPIRATION_HOURS`), coberto por teste unitário com rascunho a 15 minutos de expirar.
 
 ### SI-03.7 — Conclusão do upload e enfileiramento do processamento
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** videos.service.spec: +7, videos.service.integration-spec: +1, videos.e2e-spec: +5 — passing (src/videos 36/36, videos.e2e 21/21)
+- **Observations:** 
+  - O AC da fila indisponível (503 + reversão para `draft`) é coberto por teste unitário com o produtor lançando erro; derrubar o Redis dentro do e2e afetaria as demais suítes que compartilham o serviço.
+  - A lista do `CompleteMultipartUpload` é montada pelo servidor a partir do `ListParts` (o cliente não precisa ler o header `ETag`, o que evita depender de CORS `ExposeHeaders` no storage).
+  - Corrida entre duas conclusões simultâneas: a transição guardada garante um único vencedor; o perdedor relê o vídeo e devolve o estado atual (202) ou 409.
 
 ### SI-03.8 — Cancelamento do upload (DELETE /videos/:slug/upload)
 - **Status:** pending

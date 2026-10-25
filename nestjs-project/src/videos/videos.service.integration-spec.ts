@@ -1,5 +1,7 @@
 import { randomBytes } from 'crypto';
+import { getQueueToken } from '@nestjs/bullmq';
 import { TestingModule } from '@nestjs/testing';
+import { Queue } from 'bullmq';
 import { DataSource, Repository } from 'typeorm';
 import { Channel } from '../channels/entities/channel.entity';
 import { StorageService } from '../storage/storage.service';
@@ -11,6 +13,8 @@ import {
 } from '../test/videos-test-module';
 import { Video } from './entities/video.entity';
 import { VideoStatus } from './video-status.enum';
+import { VideoProcessingProducer } from './video-processing.producer';
+import { VIDEO_JOBS, VIDEO_PROCESSING_QUEUE } from './videos.constants';
 import { VideosService } from './videos.service';
 
 describe('VideosService (integration)', () => {
@@ -20,9 +24,14 @@ describe('VideosService (integration)', () => {
   let storage: StorageService;
   let videoRepository: Repository<Video>;
   let channel: Channel;
+  let queue: Queue;
 
   beforeAll(async () => {
-    module = await createVideosTestingModule([VideosService]);
+    module = await createVideosTestingModule([
+      VideosService,
+      VideoProcessingProducer,
+    ]);
+    queue = module.get<Queue>(getQueueToken(VIDEO_PROCESSING_QUEUE));
     dataSource = module.get(DataSource);
     service = module.get(VideosService);
     storage = module.get(StorageService);
@@ -32,12 +41,14 @@ describe('VideosService (integration)', () => {
   afterAll(async () => {
     await cleanVideoStorage(dataSource, storage);
     await cleanAllTables(dataSource);
+    await queue.obliterate({ force: true });
     await module.close();
   });
 
   beforeEach(async () => {
     await cleanVideoStorage(dataSource, storage);
     await cleanAllTables(dataSource);
+    await queue.obliterate({ force: true });
     channel = await createTestChannel(dataSource);
   });
 
@@ -104,6 +115,45 @@ describe('VideosService (integration)', () => {
       expect(state.uploaded_parts).toEqual([
         { part_number: 1, size: bytes.length },
       ]);
+    });
+  });
+
+  describe('completeUpload', () => {
+    it('should complete the object, mark processing and enqueue process-video', async () => {
+      const part1 = randomBytes(5 * 1024 * 1024);
+      const part2 = randomBytes(1024);
+      const created = await service.initiateUpload(channel.user_id, {
+        file_name: 'clip.mp4',
+        file_size: part1.length + part2.length,
+        content_type: 'video/mp4',
+      });
+      const signed = await service.signUploadParts(
+        channel.user_id,
+        created.slug,
+        { part_numbers: [1, 2] },
+      );
+      for (const [i, body] of [part1, part2].entries()) {
+        await fetch(signed.parts[i].url, {
+          method: 'PUT',
+          body: new Uint8Array(body),
+        });
+      }
+
+      const result = await service.completeUpload(
+        channel.user_id,
+        created.slug,
+      );
+
+      expect(result.status).toBe(VideoStatus.PROCESSING);
+      const video = await videoRepository.findOneByOrFail({ id: created.id });
+      expect(video.status).toBe(VideoStatus.PROCESSING);
+      expect(video.upload_id).toBeNull();
+      await expect(
+        storage.headObject(video.storage_key),
+      ).resolves.toMatchObject({ contentLength: part1.length + part2.length });
+      const job = await queue.getJob(created.id);
+      expect(job?.name).toBe(VIDEO_JOBS.PROCESS);
+      expect(job?.data).toEqual({ videoId: created.id });
     });
   });
 });

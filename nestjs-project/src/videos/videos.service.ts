@@ -9,6 +9,9 @@ import { isPgUniqueViolationOnColumn } from '../common/database/pg-errors';
 import {
   ChannelNotFoundException,
   InvalidUploadPartException,
+  ProcessingQueueUnavailableException,
+  UploadIncompleteException,
+  UploadSizeMismatchException,
   VideoFileTooLargeException,
   VideoNotFoundException,
   VideoNotOwnedException,
@@ -17,6 +20,7 @@ import {
 import videosConfig from '../config/videos.config';
 import { StorageService } from '../storage/storage.service';
 import type { CreateVideoDto } from './dto/create-video.dto';
+import type { CompletedUploadResponseDto } from './dto/completed-upload-response.dto';
 import type { CreatedVideoResponseDto } from './dto/created-video-response.dto';
 import type { SignUploadPartsDto } from './dto/sign-upload-parts.dto';
 import type {
@@ -25,12 +29,14 @@ import type {
 } from './dto/upload-parts-response.dto';
 import { Video } from './entities/video.entity';
 import { generateVideoSlug } from './slug.util';
+import { VideoProcessingProducer } from './video-processing.producer';
 import { VideoStatus } from './video-status.enum';
 import { videoSourceKey } from './video-storage-keys';
 
 const MAX_SLUG_ATTEMPTS = 5;
 const SLUG_COLUMN = 'slug';
 const HOUR_MS = 60 * 60 * 1000;
+const SIZE_MISMATCH_ERROR = 'UPLOAD_SIZE_MISMATCH';
 
 @Injectable()
 export class VideosService {
@@ -39,6 +45,7 @@ export class VideosService {
     private readonly videoRepository: Repository<Video>,
     private readonly channelsService: ChannelsService,
     private readonly storageService: StorageService,
+    private readonly processingProducer: VideoProcessingProducer,
     @Inject(videosConfig.KEY)
     private readonly config: ConfigType<typeof videosConfig>,
   ) {}
@@ -150,6 +157,100 @@ export class VideosService {
         size: p.size,
       })),
     };
+  }
+
+  /**
+   * Completes the multipart upload, moves the video draft → processing with a
+   * guarded update and enqueues the processing job. Repeated calls while the
+   * video is already processing are idempotent.
+   */
+  async completeUpload(
+    userId: string,
+    slug: string,
+  ): Promise<CompletedUploadResponseDto> {
+    const video = await this.findOwnedVideo(userId, slug);
+    if (video.status === VideoStatus.PROCESSING) return this.toCompleted(video);
+    if (video.status !== VideoStatus.DRAFT) {
+      throw new VideoNotUploadableException(video.status);
+    }
+
+    if (video.upload_id) {
+      await this.completeMultipart(video, video.upload_id);
+    }
+    await this.assertStoredSize(video);
+
+    const transition = await this.videoRepository.update(
+      { id: video.id, status: VideoStatus.DRAFT },
+      { status: VideoStatus.PROCESSING },
+    );
+    if (!transition.affected) {
+      // A concurrent completion won the transition; report the current state.
+      const current = await this.videoRepository.findOneByOrFail({
+        id: video.id,
+      });
+      if (current.status !== VideoStatus.PROCESSING) {
+        throw new VideoNotUploadableException(current.status);
+      }
+      return this.toCompleted(current);
+    }
+
+    try {
+      await this.processingProducer.enqueueProcessing(video.id);
+    } catch {
+      await this.videoRepository.update(
+        { id: video.id, status: VideoStatus.PROCESSING },
+        { status: VideoStatus.DRAFT },
+      );
+      throw new ProcessingQueueUnavailableException();
+    }
+    return { id: video.id, slug: video.slug, status: VideoStatus.PROCESSING };
+  }
+
+  private async completeMultipart(
+    video: Video,
+    uploadId: string,
+  ): Promise<void> {
+    const parts = await this.storageService.listParts(
+      video.storage_key,
+      uploadId,
+    );
+    const stored = new Map(parts.map((p) => [p.partNumber, p]));
+    const missing: number[] = [];
+    for (let n = 1; n <= video.upload_part_count; n++) {
+      if (!stored.has(n)) missing.push(n);
+    }
+    if (missing.length > 0) throw new UploadIncompleteException(missing);
+
+    const total = parts.reduce((sum, p) => sum + p.size, 0);
+    if (total !== video.file_size_bytes) {
+      throw new UploadSizeMismatchException(video.file_size_bytes, total);
+    }
+
+    await this.storageService.completeMultipartUpload(
+      video.storage_key,
+      uploadId,
+      parts,
+    );
+    await this.videoRepository.update({ id: video.id }, { upload_id: null });
+    video.upload_id = null;
+  }
+
+  /** Second size check, on the final object (per TD-05). */
+  private async assertStoredSize(video: Video): Promise<void> {
+    const head = await this.storageService.headObject(video.storage_key);
+    const actual = head?.contentLength ?? 0;
+    if (actual === video.file_size_bytes) return;
+
+    if (head) await this.storageService.deleteObject(video.storage_key);
+    await this.videoRepository.update(
+      { id: video.id, status: VideoStatus.DRAFT },
+      { status: VideoStatus.FAILED, processing_error: SIZE_MISMATCH_ERROR },
+    );
+    throw new UploadSizeMismatchException(video.file_size_bytes, actual);
+  }
+
+  private toCompleted(video: Video): CompletedUploadResponseDto {
+    return { id: video.id, slug: video.slug, status: video.status };
   }
 
   private async findOwnedVideo(userId: string, slug: string): Promise<Video> {
